@@ -1,0 +1,574 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Football Predictor Pro</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --bg: #0a0e17;
+      --card: #111827;
+      --card-hover: #1a2332;
+      --border: #1e293b;
+      --accent: #10b981;
+      --accent2: #3b82f6;
+      --accent3: #f59e0b;
+      --text: #e2e8f0;
+      --text-dim: #94a3b8;
+      --danger: #ef4444;
+      --win: #10b981;
+      --draw: #f59e0b;
+      --lose: #ef4444;
+    }
+
+    body {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    /* ── Header ─────────────────────────────────── */
+    header {
+      background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%);
+      border-bottom: 1px solid var(--border);
+      padding: 1.5rem 2rem;
+      text-align: center;
+    }
+    header h1 {
+      font-size: 1.8rem;
+      font-weight: 700;
+      background: linear-gradient(90deg, #10b981, #3b82f6);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    header p {
+      color: var(--text-dim);
+      font-size: 0.85rem;
+      margin-top: 0.3rem;
+    }
+
+    /* ── Main layout ────────────────────────────── */
+    .container {
+      max-width: 900px;
+      margin: 2rem auto;
+      padding: 0 1.5rem;
+    }
+
+    /* ── Form card ──────────────────────────────── */
+    .form-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 2rem;
+      margin-bottom: 2rem;
+    }
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 1rem;
+      margin-bottom: 1.2rem;
+    }
+    @media (max-width: 640px) {
+      .form-row { grid-template-columns: 1fr; }
+    }
+
+    label {
+      display: block;
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-dim);
+      margin-bottom: 0.4rem;
+    }
+
+    select, input[type="text"] {
+      width: 100%;
+      padding: 0.7rem 1rem;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-size: 0.95rem;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    select:focus, input:focus {
+      border-color: var(--accent);
+    }
+    select option { background: var(--bg); }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      width: 100%;
+      padding: 0.85rem 1.5rem;
+      background: linear-gradient(135deg, #10b981, #059669);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.2s, transform 0.1s;
+    }
+    .btn:hover { opacity: 0.9; }
+    .btn:active { transform: scale(0.98); }
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    /* ── Loading ─────────────────────────────────── */
+    .spinner {
+      display: none;
+      width: 20px; height: 20px;
+      border: 3px solid rgba(255,255,255,0.3);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.6s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .loading .spinner { display: block; }
+    .loading .btn-text { display: none; }
+
+    /* ── Error ───────────────────────────────────── */
+    .error-box {
+      display: none;
+      background: rgba(239,68,68,0.1);
+      border: 1px solid rgba(239,68,68,0.3);
+      border-radius: 8px;
+      padding: 1rem;
+      margin-bottom: 1.5rem;
+      color: var(--danger);
+      font-size: 0.9rem;
+    }
+
+    /* ── Results ─────────────────────────────────── */
+    #results { display: none; }
+
+    .result-header {
+      text-align: center;
+      margin-bottom: 1.5rem;
+    }
+    .result-header h2 {
+      font-size: 1.5rem;
+      margin-bottom: 0.3rem;
+    }
+    .result-header .vs { color: var(--text-dim); font-weight: 400; }
+    .result-header .xg-line {
+      font-size: 0.85rem;
+      color: var(--text-dim);
+      margin-top: 0.4rem;
+    }
+    .result-header .xg-line span { color: var(--accent); font-weight: 600; }
+    .data-badge {
+      display: inline-block;
+      font-size: 0.7rem;
+      padding: 0.15rem 0.6rem;
+      border-radius: 99px;
+      background: rgba(16,185,129,0.15);
+      color: var(--accent);
+      margin-top: 0.5rem;
+    }
+
+    /* ── Best bet banner ─────────────────────────── */
+    .best-bet {
+      background: linear-gradient(135deg, rgba(245,158,11,0.12), rgba(245,158,11,0.04));
+      border: 1px solid rgba(245,158,11,0.3);
+      border-radius: 12px;
+      padding: 1.2rem 1.5rem;
+      margin-bottom: 1.5rem;
+      text-align: center;
+    }
+    .best-bet .label {
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--accent3);
+      margin-bottom: 0.4rem;
+    }
+    .best-bet .pick {
+      font-size: 1.3rem;
+      font-weight: 700;
+      color: #fff;
+    }
+    .best-bet .market {
+      font-size: 0.85rem;
+      color: var(--text-dim);
+      margin-top: 0.2rem;
+    }
+    .best-bet .conf {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: var(--accent3);
+    }
+
+    /* ── Prediction cards grid ───────────────────── */
+    .cards-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+    @media (max-width: 640px) {
+      .cards-grid { grid-template-columns: 1fr; }
+    }
+
+    .pred-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.2rem;
+    }
+    .pred-card h3 {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-dim);
+      margin-bottom: 0.8rem;
+    }
+
+    /* ── 1X2 bar ─────────────────────────────────── */
+    .prob-bar-row {
+      display: flex;
+      align-items: center;
+      margin-bottom: 0.5rem;
+    }
+    .prob-label {
+      width: 90px;
+      font-size: 0.85rem;
+      color: var(--text-dim);
+    }
+    .prob-bar-wrap {
+      flex: 1;
+      height: 24px;
+      background: rgba(255,255,255,0.05);
+      border-radius: 6px;
+      overflow: hidden;
+      position: relative;
+    }
+    .prob-bar-fill {
+      height: 100%;
+      border-radius: 6px;
+      transition: width 0.6s ease;
+    }
+    .prob-val {
+      width: 55px;
+      text-align: right;
+      font-size: 0.9rem;
+      font-weight: 600;
+    }
+    .c-win .prob-bar-fill { background: linear-gradient(90deg, #10b981, #059669); }
+    .c-win .prob-val { color: var(--win); }
+    .c-draw .prob-bar-fill { background: linear-gradient(90deg, #f59e0b, #d97706); }
+    .c-draw .prob-val { color: var(--draw); }
+    .c-lose .prob-bar-fill { background: linear-gradient(90deg, #ef4444, #dc2626); }
+    .c-lose .prob-val { color: var(--lose); }
+
+    /* ── Gauge pairs ─────────────────────────────── */
+    .gauge-pair {
+      display: flex;
+      justify-content: space-around;
+      text-align: center;
+    }
+    .gauge-item .val {
+      font-size: 1.6rem;
+      font-weight: 700;
+    }
+    .gauge-item .lbl {
+      font-size: 0.75rem;
+      color: var(--text-dim);
+      margin-top: 0.2rem;
+    }
+    .gauge-item.hi .val { color: var(--accent); }
+    .gauge-item.lo .val { color: var(--text-dim); }
+
+    /* ── Exact scores ────────────────────────────── */
+    .score-list { list-style: none; }
+    .score-list li {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.45rem 0;
+      border-bottom: 1px solid var(--border);
+      font-size: 0.9rem;
+    }
+    .score-list li:last-child { border-bottom: none; }
+    .score-list .score-val {
+      font-weight: 700;
+      font-size: 1rem;
+      color: var(--accent2);
+      font-variant-numeric: tabular-nums;
+    }
+    .score-list .score-pct {
+      color: var(--text-dim);
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* ── Footer ──────────────────────────────────── */
+    footer {
+      text-align: center;
+      padding: 2rem;
+      color: var(--text-dim);
+      font-size: 0.75rem;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>Football Predictor Pro</h1>
+  <p>Dixon-Coles Model &bull; Live Data &bull; Odds Calibration</p>
+</header>
+
+<div class="container">
+
+  <!-- ── Input Form ───────────────────────────── -->
+  <div class="form-card">
+    <div class="form-row">
+      <div>
+        <label for="league">League</label>
+        <select id="league"><option>Loading...</option></select>
+      </div>
+      <div>
+        <label for="home">Home Team</label>
+        <select id="home"><option>Select league first</option></select>
+      </div>
+      <div>
+        <label for="away">Away Team</label>
+        <select id="away"><option>Select league first</option></select>
+      </div>
+    </div>
+    <button class="btn" id="predictBtn" onclick="predict()">
+      <span class="btn-text">Predict Match</span>
+      <div class="spinner"></div>
+    </button>
+  </div>
+
+  <div class="error-box" id="errorBox"></div>
+
+  <!-- ── Results ──────────────────────────────── -->
+  <div id="results">
+
+    <div class="result-header">
+      <h2><span id="rHome"></span> <span class="vs">vs</span> <span id="rAway"></span></h2>
+      <div class="xg-line">Expected Goals: <span id="xgHome"></span> &ndash; <span id="xgAway"></span></div>
+      <div class="data-badge" id="dataBadge"></div>
+    </div>
+
+    <div class="best-bet" id="bestBet">
+      <div class="label">Best Bet Recommendation</div>
+      <div class="pick" id="bbPick"></div>
+      <div class="market"><span id="bbMarket"></span> &bull; <span class="conf" id="bbConf"></span></div>
+    </div>
+
+    <div class="cards-grid">
+
+      <!-- 1X2 -->
+      <div class="pred-card">
+        <h3>Match Outcome (1X2)</h3>
+        <div class="prob-bar-row c-win">
+          <div class="prob-label" id="lbl1x2Home">Home</div>
+          <div class="prob-bar-wrap"><div class="prob-bar-fill" id="barHome"></div></div>
+          <div class="prob-val" id="valHome"></div>
+        </div>
+        <div class="prob-bar-row c-draw">
+          <div class="prob-label">Draw</div>
+          <div class="prob-bar-wrap"><div class="prob-bar-fill" id="barDraw"></div></div>
+          <div class="prob-val" id="valDraw"></div>
+        </div>
+        <div class="prob-bar-row c-lose">
+          <div class="prob-label" id="lbl1x2Away">Away</div>
+          <div class="prob-bar-wrap"><div class="prob-bar-fill" id="barAway"></div></div>
+          <div class="prob-val" id="valAway"></div>
+        </div>
+      </div>
+
+      <!-- Over/Under -->
+      <div class="pred-card">
+        <h3>Over / Under 2.5 Goals</h3>
+        <div class="gauge-pair" id="ouGauge"></div>
+      </div>
+
+      <!-- BTTS -->
+      <div class="pred-card">
+        <h3>Both Teams to Score</h3>
+        <div class="gauge-pair" id="bttsGauge"></div>
+      </div>
+
+      <!-- Exact Scores -->
+      <div class="pred-card">
+        <h3>Most Likely Scores</h3>
+        <ul class="score-list" id="scoreList"></ul>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<footer>Football Predictor Pro v2.0 &mdash; For educational purposes only. Not financial advice.</footer>
+
+<script>
+const API = "";  // same origin
+
+// ── Load leagues on startup ──────────────────
+async function init() {
+  try {
+    const leagues = await (await fetch(`${API}/api/leagues`)).json();
+    const sel = document.getElementById("league");
+    sel.innerHTML = leagues.map(l => `<option value="${l}">${l}</option>`).join("");
+    sel.value = "Champions League";
+    if (!leagues.includes("Champions League")) sel.selectedIndex = 0;
+    sel.addEventListener("change", loadTeams);
+    loadTeams();
+  } catch(e) {
+    showError("Could not connect to backend. Is app.py running?");
+  }
+}
+
+// ── Load teams for selected league ───────────
+async function loadTeams() {
+  const league = document.getElementById("league").value;
+  const homeSel = document.getElementById("home");
+  const awaySel = document.getElementById("away");
+  homeSel.innerHTML = `<option>Loading teams...</option>`;
+  awaySel.innerHTML = `<option>Loading teams...</option>`;
+
+  try {
+    const data = await (await fetch(`${API}/api/leagues/${encodeURIComponent(league)}/teams`)).json();
+    const opts = data.teams.map(t => `<option value="${t}">${t}</option>`).join("");
+    homeSel.innerHTML = opts;
+    awaySel.innerHTML = opts;
+    if (data.teams.length > 1) awaySel.selectedIndex = 1;
+  } catch(e) {
+    homeSel.innerHTML = `<option>Error loading</option>`;
+  }
+}
+
+// ── Predict ──────────────────────────────────
+async function predict() {
+  const btn = document.getElementById("predictBtn");
+  const league = document.getElementById("league").value;
+  const home = document.getElementById("home").value;
+  const away = document.getElementById("away").value;
+
+  if (home === away) { showError("Home and away teams must be different."); return; }
+
+  btn.classList.add("loading");
+  btn.disabled = true;
+  hideError();
+  document.getElementById("results").style.display = "none";
+
+  try {
+    const res = await fetch(`${API}/api/predict`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ league, home_team: home, away_team: away }),
+    });
+    const data = await res.json();
+
+    if (!res.ok) {
+      showError(data.error || "Prediction failed");
+      return;
+    }
+
+    renderResults(data);
+  } catch(e) {
+    showError("Network error: " + e.message);
+  } finally {
+    btn.classList.remove("loading");
+    btn.disabled = false;
+  }
+}
+
+// ── Render results ───────────────────────────
+function renderResults(d) {
+  document.getElementById("results").style.display = "block";
+
+  // Header
+  document.getElementById("rHome").textContent = d.home_team;
+  document.getElementById("rAway").textContent = d.away_team;
+  document.getElementById("xgHome").textContent = d.expected_home_goals.toFixed(2);
+  document.getElementById("xgAway").textContent = d.expected_away_goals.toFixed(2);
+  document.getElementById("dataBadge").textContent =
+    d.is_live ? `Live Data (${d.data_source})` : "Fallback Data";
+
+  // Best bet
+  const bb = d.best_bet;
+  document.getElementById("bbPick").textContent = bb.prediction;
+  document.getElementById("bbMarket").textContent = bb.market;
+  document.getElementById("bbConf").textContent = bb.confidence.toFixed(1) + "%";
+
+  // 1X2
+  document.getElementById("lbl1x2Home").textContent = shortName(d.home_team);
+  document.getElementById("lbl1x2Away").textContent = shortName(d.away_team);
+  setBar("barHome", "valHome", d.home_win);
+  setBar("barDraw", "valDraw", d.draw);
+  setBar("barAway", "valAway", d.away_win);
+
+  // Over/Under
+  document.getElementById("ouGauge").innerHTML = gaugePair(
+    d.over_25, "Over 2.5", d.under_25, "Under 2.5"
+  );
+
+  // BTTS
+  document.getElementById("bttsGauge").innerHTML = gaugePair(
+    d.btts_yes, "Yes", d.btts_no, "No"
+  );
+
+  // Exact scores
+  const list = document.getElementById("scoreList");
+  list.innerHTML = d.exact_scores.map(s =>
+    `<li><span class="score-val">${s.score}</span><span class="score-pct">${s.probability.toFixed(1)}%</span></li>`
+  ).join("");
+
+  // Scroll to results
+  document.getElementById("results").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+// ── Helpers ──────────────────────────────────
+function setBar(barId, valId, pct) {
+  document.getElementById(barId).style.width = pct + "%";
+  document.getElementById(valId).textContent = pct.toFixed(1) + "%";
+}
+
+function gaugePair(v1, l1, v2, l2) {
+  const hi1 = v1 >= v2;
+  return `
+    <div class="gauge-item ${hi1 ? 'hi' : 'lo'}">
+      <div class="val">${v1.toFixed(1)}%</div>
+      <div class="lbl">${l1}</div>
+    </div>
+    <div class="gauge-item ${!hi1 ? 'hi' : 'lo'}">
+      <div class="val">${v2.toFixed(1)}%</div>
+      <div class="lbl">${l2}</div>
+    </div>`;
+}
+
+function shortName(name) {
+  // "Newcastle United FC" -> "Newcastle"
+  return name.split(" ")[0];
+}
+
+function showError(msg) {
+  const box = document.getElementById("errorBox");
+  box.textContent = msg;
+  box.style.display = "block";
+}
+function hideError() {
+  document.getElementById("errorBox").style.display = "none";
+}
+
+// Boot
+init();
+</script>
+
+</body>
+</html>
