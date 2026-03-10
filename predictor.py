@@ -33,7 +33,7 @@ except ImportError:
 
 from api_integration import (
     APIFootball, OddsAPI, FootballDataOrg, DataProcessor,
-    ResponseCache, LEAGUES, TeamData, FixtureData, MatchResult,
+    ResponseCache, LEAGUES, TeamData, TeamExtendedStats, FixtureData, MatchResult,
     get_available_leagues, check_api_availability, clear_cache,
     FOOTBALL_DATA_KEY,
 )
@@ -166,6 +166,7 @@ class LiveDataProvider:
 
         self.team_stats: Dict[str, TeamStats] = {}
         self.team_id_map: Dict[str, int] = {}
+        self.extended_stats_cache: Dict[str, TeamExtendedStats] = {}
         self.league_avg_goals: float = FALLBACK_LEAGUE_AVG
         self.is_live = False
 
@@ -240,6 +241,25 @@ class LiveDataProvider:
     def get_team_names(self) -> List[str]:
         db = self.team_stats if self.is_live else FALLBACK_TEAMS
         return sorted(db.keys())
+
+    def get_extended_stats(self, team_name: str) -> Optional[TeamExtendedStats]:
+        """Fetch real corners/cards/shots stats for a team (cached)."""
+        if team_name in self.extended_stats_cache:
+            return self.extended_stats_cache[team_name]
+
+        if not self.api.is_available():
+            return None
+
+        team_id = self.team_id_map.get(team_name)
+        if team_id is None:
+            return None
+
+        stats = self.api.get_team_extended_from_fixtures(
+            team_id, team_name, self.league_id
+        )
+        if stats:
+            self.extended_stats_cache[team_name] = stats
+        return stats
 
     def get_h2h(self, team1: str, team2: str) -> dict:
         if not self.api.is_available():
@@ -481,107 +501,101 @@ class PredictionEngine:
     # ── Corners prediction ───────────────────────────────────────────────
 
     @staticmethod
-    def predict_corners(home: TeamStats, away: TeamStats, home_xg: float, away_xg: float) -> dict:
-        """Estimate corners from attack strength and expected goals.
+    def _poisson_over(lam: float, threshold: float) -> float:
+        """P(X > threshold) using Poisson CDF."""
+        under = sum((math.exp(-lam) * lam**k) / math.factorial(k) for k in range(int(threshold) + 1))
+        return 1.0 - under
 
-        League averages: ~10.2 corners per match (5.5 home, 4.7 away).
-        Corners correlate with attack pressure and goal expectancy.
-        """
-        LEAGUE_AVG_CORNERS = 10.2
-        HOME_CORNER_SHARE = 0.54  # home teams win ~54% of corners
+    @staticmethod
+    def predict_corners(home: TeamStats, away: TeamStats, home_xg: float, away_xg: float,
+                        home_ext: Optional[TeamExtendedStats] = None,
+                        away_ext: Optional[TeamExtendedStats] = None) -> dict:
+        """Predict corners using real per-team averages when available,
+        otherwise estimate from attack strength and xG."""
 
-        # Offensive teams create more corners; defensive teams concede more
-        home_attack_factor = (home.attack_strength + (1 / max(away.defense_strength, 0.3))) / 2
-        away_attack_factor = (away.attack_strength + (1 / max(home.defense_strength, 0.3))) / 2
+        if home_ext and home_ext.corners_for_avg > 0 and away_ext and away_ext.corners_for_avg > 0:
+            # Use real data: each team's avg corners won, adjusted for home advantage
+            home_corners = home_ext.corners_for_avg * 1.05  # slight home boost
+            away_corners = away_ext.corners_for_avg * 0.95
+        else:
+            # Fallback: estimate from attack strength and xG
+            LEAGUE_AVG_CORNERS = 10.2
+            total_xg = home_xg + away_xg
+            xg_ratio = total_xg / 2.65 if total_xg > 0 else 1.0
+            total_est = LEAGUE_AVG_CORNERS * xg_ratio
 
-        # Scale by xG ratio relative to league average (more expected goals = more corners)
-        total_xg = home_xg + away_xg
-        xg_ratio = total_xg / 2.65 if total_xg > 0 else 1.0
+            home_attack_factor = (home.attack_strength + (1 / max(away.defense_strength, 0.3))) / 2
+            away_attack_factor = (away.attack_strength + (1 / max(home.defense_strength, 0.3))) / 2
+            factor_sum = home_attack_factor + away_attack_factor
+            home_corners = total_est * (home_attack_factor / factor_sum) * 1.08
+            away_corners = total_est - home_corners
 
-        total_corners = LEAGUE_AVG_CORNERS * xg_ratio
-        # Split by attack factors
-        factor_sum = home_attack_factor + away_attack_factor
-        home_corners = total_corners * (home_attack_factor / factor_sum) * (HOME_CORNER_SHARE / 0.5)
-        away_corners = total_corners - home_corners
-
-        # Clamp
         home_corners = max(2.0, min(9.0, home_corners))
         away_corners = max(1.5, min(8.0, away_corners))
         total_corners = home_corners + away_corners
-
-        # Over/under probabilities using Poisson approximation
-        def poisson_over(lam, threshold):
-            """P(X > threshold) = 1 - P(X <= floor(threshold))"""
-            under = sum((math.exp(-lam) * lam**k) / math.factorial(k) for k in range(int(threshold) + 1))
-            return 1.0 - under
 
         return {
             "expected": round(total_corners, 1),
             "home": round(home_corners, 1),
             "away": round(away_corners, 1),
-            "over_85": round(poisson_over(total_corners, 8.5) * 100, 1),
-            "over_95": round(poisson_over(total_corners, 9.5) * 100, 1),
-            "over_105": round(poisson_over(total_corners, 10.5) * 100, 1),
+            "over_85": round(PredictionEngine._poisson_over(total_corners, 8.5) * 100, 1),
+            "over_95": round(PredictionEngine._poisson_over(total_corners, 9.5) * 100, 1),
+            "over_105": round(PredictionEngine._poisson_over(total_corners, 10.5) * 100, 1),
         }
 
     # ── Yellow cards prediction ──────────────────────────────────────────
 
     @staticmethod
-    def predict_cards(home: TeamStats, away: TeamStats, home_xg: float, away_xg: float) -> dict:
-        """Estimate yellow cards from team characteristics.
+    def predict_cards(home: TeamStats, away: TeamStats, home_xg: float, away_xg: float,
+                      home_ext: Optional[TeamExtendedStats] = None,
+                      away_ext: Optional[TeamExtendedStats] = None) -> dict:
+        """Predict yellow cards using real per-team averages when available."""
 
-        League averages: ~4.2 yellow cards per match.
-        Higher cards in: derbies, defensive teams, losing teams.
-        """
-        LEAGUE_AVG_CARDS = 4.2
+        if home_ext and home_ext.yellow_cards_avg > 0 and away_ext and away_ext.yellow_cards_avg > 0:
+            # Use real data
+            home_cards = home_ext.yellow_cards_avg
+            away_cards = away_ext.yellow_cards_avg * 1.05  # away teams get slightly more
+        else:
+            # Fallback: estimate from defense strength and form
+            LEAGUE_AVG_CARDS = 4.2
+            home_def_factor = max(home.defense_strength, 0.3)
+            away_def_factor = max(away.defense_strength, 0.3)
+            home_form_factor = 1.0 + 0.3 * (1.0 - home.form_rating)
+            away_form_factor = 1.0 + 0.3 * (1.0 - away.form_rating)
+            xg_diff = abs(home_xg - away_xg)
+            competitiveness = 1.0 + 0.15 * max(0, 1.0 - xg_diff)
 
-        # Defensive teams commit more fouls → more cards
-        home_def_factor = max(home.defense_strength, 0.3)  # higher = worse defense = more fouls
-        away_def_factor = max(away.defense_strength, 0.3)
-
-        # Teams in poor form commit more tactical fouls
-        home_form_factor = 1.0 + 0.3 * (1.0 - home.form_rating)
-        away_form_factor = 1.0 + 0.3 * (1.0 - away.form_rating)
-
-        # Competitive matches (close xG) produce more cards
-        xg_diff = abs(home_xg - away_xg)
-        competitiveness = 1.0 + 0.15 * max(0, 1.0 - xg_diff)
-
-        home_cards = (LEAGUE_AVG_CARDS / 2) * home_def_factor * home_form_factor * competitiveness
-        away_cards = (LEAGUE_AVG_CARDS / 2) * away_def_factor * away_form_factor * competitiveness
-
-        # Away teams get slightly more cards
-        away_cards *= 1.08
+            home_cards = (LEAGUE_AVG_CARDS / 2) * home_def_factor * home_form_factor * competitiveness
+            away_cards = (LEAGUE_AVG_CARDS / 2) * away_def_factor * away_form_factor * competitiveness * 1.08
 
         home_cards = max(1.0, min(5.0, home_cards))
         away_cards = max(1.0, min(5.0, away_cards))
         total_cards = home_cards + away_cards
 
-        def poisson_over(lam, threshold):
-            under = sum((math.exp(-lam) * lam**k) / math.factorial(k) for k in range(int(threshold) + 1))
-            return 1.0 - under
-
         return {
             "expected": round(total_cards, 1),
             "home": round(home_cards, 1),
             "away": round(away_cards, 1),
-            "over_35": round(poisson_over(total_cards, 3.5) * 100, 1),
-            "over_45": round(poisson_over(total_cards, 4.5) * 100, 1),
-            "over_55": round(poisson_over(total_cards, 5.5) * 100, 1),
+            "over_35": round(PredictionEngine._poisson_over(total_cards, 3.5) * 100, 1),
+            "over_45": round(PredictionEngine._poisson_over(total_cards, 4.5) * 100, 1),
+            "over_55": round(PredictionEngine._poisson_over(total_cards, 5.5) * 100, 1),
         }
 
     # ── Shots on target prediction ───────────────────────────────────────
 
     @staticmethod
-    def predict_shots_on_target(home: TeamStats, away: TeamStats, home_xg: float, away_xg: float) -> dict:
-        """Estimate shots on target. League avg: ~9.4 SOT/match (~0.11 xG per SOT)."""
-        # Roughly 1 SOT per 0.11 xG, but also driven by attack strength
-        home_sot = home_xg / 0.11 * 0.55  # Not all xG comes from SOT
-        away_sot = away_xg / 0.11 * 0.55
+    def predict_shots_on_target(home: TeamStats, away: TeamStats, home_xg: float, away_xg: float,
+                                 home_ext: Optional[TeamExtendedStats] = None,
+                                 away_ext: Optional[TeamExtendedStats] = None) -> dict:
+        """Predict shots on target using real data when available."""
 
-        # Adjust by attack strength
-        home_sot *= (0.7 + 0.3 * home.attack_strength)
-        away_sot *= (0.7 + 0.3 * away.attack_strength)
+        if home_ext and home_ext.shots_on_target_avg > 0 and away_ext and away_ext.shots_on_target_avg > 0:
+            home_sot = home_ext.shots_on_target_avg
+            away_sot = away_ext.shots_on_target_avg
+        else:
+            # Fallback: estimate from xG
+            home_sot = home_xg / 0.11 * 0.55 * (0.7 + 0.3 * home.attack_strength)
+            away_sot = away_xg / 0.11 * 0.55 * (0.7 + 0.3 * away.attack_strength)
 
         home_sot = max(1.5, min(9.0, home_sot))
         away_sot = max(1.0, min(8.0, away_sot))
@@ -643,7 +657,9 @@ class PredictionEngine:
 
     def predict_match(self, home: TeamStats, away: TeamStats,
                        h2h: dict = None,
-                       odds_probs: Tuple[float, float, float] = (0, 0, 0)) -> MatchPrediction:
+                       odds_probs: Tuple[float, float, float] = (0, 0, 0),
+                       home_ext: Optional[TeamExtendedStats] = None,
+                       away_ext: Optional[TeamExtendedStats] = None) -> MatchPrediction:
 
         home_xg, away_xg = self.calculate_expected_goals(home, away, h2h)
         score_probs = self.calculate_score_probabilities(home_xg, away_xg)
@@ -661,10 +677,10 @@ class PredictionEngine:
         top_scores = self.get_top_scores(score_probs, 5)
         team_goals = self.calculate_team_goals_probs(score_probs)
 
-        # Extended predictions
-        corners = self.predict_corners(home, away, home_xg, away_xg)
-        cards = self.predict_cards(home, away, home_xg, away_xg)
-        shots = self.predict_shots_on_target(home, away, home_xg, away_xg)
+        # Extended predictions (use real data when available)
+        corners = self.predict_corners(home, away, home_xg, away_xg, home_ext, away_ext)
+        cards = self.predict_cards(home, away, home_xg, away_xg, home_ext, away_ext)
+        shots = self.predict_shots_on_target(home, away, home_xg, away_xg, home_ext, away_ext)
         halves = self.predict_half_goals(home_xg, away_xg)
 
         pred_dict = {

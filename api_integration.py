@@ -338,6 +338,22 @@ class TeamData:
     failed_to_score: int
 
 @dataclass
+class TeamExtendedStats:
+    """Real team-level statistics from API (corners, cards, shots, etc.)."""
+    team_id: int
+    team_name: str
+    corners_for_avg: float = 0.0     # avg corners won per match
+    corners_against_avg: float = 0.0 # avg corners conceded per match
+    yellow_cards_avg: float = 0.0    # avg yellows per match
+    red_cards_avg: float = 0.0
+    shots_on_target_avg: float = 0.0
+    shots_total_avg: float = 0.0
+    fouls_committed_avg: float = 0.0
+    fouls_drawn_avg: float = 0.0
+    possession_avg: float = 50.0
+    games_played: int = 0
+
+@dataclass
 class FixtureData:
     """Match fixture data"""
     id: int
@@ -536,6 +552,139 @@ class APIFootball:
                     away_goals=fix["goals"]["away"] or 0,
                 ))
         return results
+
+    # ── team detailed statistics ────────────────────────────────────────────
+
+    def get_team_statistics(self, team_id: int, league_id: int, season: int = 2025) -> Optional[TeamExtendedStats]:
+        """Fetch detailed team statistics (corners, cards, shots, etc.)."""
+        data = self._make_request(
+            "teams/statistics",
+            {"team": team_id, "league": league_id, "season": season},
+            cache_ttl=ResponseCache.TTL_STANDINGS,  # 1 hour cache
+        )
+        if not data.get("response"):
+            return None
+
+        r = data["response"]
+        fixtures_played = r.get("fixtures", {}).get("played", {})
+        gp = (fixtures_played.get("home", 0) or 0) + (fixtures_played.get("away", 0) or 0)
+        if gp == 0:
+            return None
+
+        team_name = normalize_team_name(r.get("team", {}).get("name", "Unknown"))
+
+        # Cards: { "0-15": {"yellow": {"total": N}, "red": {"total": N}}, ... }
+        cards = r.get("cards", {})
+        total_yellows = 0
+        total_reds = 0
+        for _, card_data in cards.items():
+            if isinstance(card_data, dict):
+                y = card_data.get("yellow", {})
+                r_card = card_data.get("red", {})
+                total_yellows += (y.get("total", 0) or 0)
+                total_reds += (r_card.get("total", 0) or 0)
+
+        return TeamExtendedStats(
+            team_id=team_id,
+            team_name=team_name,
+            yellow_cards_avg=round(total_yellows / gp, 2) if gp > 0 else 0,
+            red_cards_avg=round(total_reds / gp, 2) if gp > 0 else 0,
+            games_played=gp,
+        )
+
+    def get_fixture_statistics(self, fixture_id: int) -> dict:
+        """Get per-match statistics (corners, shots, etc.) for a played fixture."""
+        data = self._make_request(
+            "fixtures/statistics",
+            {"fixture": fixture_id},
+            cache_ttl=ResponseCache.TTL_RESULTS,
+        )
+        if not data.get("response"):
+            return {}
+        # Returns list of team stats [{team: {...}, statistics: [...]}, ...]
+        result = {}
+        for team_block in data["response"]:
+            team_name = normalize_team_name(team_block.get("team", {}).get("name", ""))
+            stats = {}
+            for s in team_block.get("statistics", []):
+                stats[s["type"]] = s["value"]
+            result[team_name] = stats
+        return result
+
+    def get_team_extended_from_fixtures(self, team_id: int, team_name: str,
+                                         league_id: int, season: int = 2025) -> Optional[TeamExtendedStats]:
+        """Build extended stats by aggregating past fixture statistics.
+        Uses cached past results to avoid extra API calls."""
+        # Get finished fixtures for this league/season
+        data = self._make_request(
+            "fixtures",
+            {"league": league_id, "season": season, "status": "FT", "last": 40},
+            cache_ttl=ResponseCache.TTL_RESULTS,
+        )
+        if not data.get("response"):
+            return None
+
+        # Filter to fixtures involving this team
+        team_fixtures = []
+        for fix in data["response"]:
+            home_id = fix["teams"]["home"]["id"]
+            away_id = fix["teams"]["away"]["id"]
+            if team_id in (home_id, away_id):
+                team_fixtures.append(fix["fixture"]["id"])
+
+        if not team_fixtures:
+            return None
+
+        # Aggregate stats from fixture statistics (limit to save API calls)
+        corners_list = []
+        yellows_list = []
+        shots_ot_list = []
+        shots_total_list = []
+        fouls_list = []
+        possession_list = []
+
+        for fid in team_fixtures[:10]:  # Last 10 matches max
+            stats = self.get_fixture_statistics(fid)
+            # Find our team's stats
+            for tname, tstat in stats.items():
+                if tname.lower() == team_name.lower() or team_name.lower() in tname.lower():
+                    c = tstat.get("Corner Kicks")
+                    if c is not None:
+                        corners_list.append(int(c) if c else 0)
+                    y = tstat.get("Yellow Cards")
+                    if y is not None:
+                        yellows_list.append(int(y) if y else 0)
+                    sot = tstat.get("Shots on Goal")
+                    if sot is not None:
+                        shots_ot_list.append(int(sot) if sot else 0)
+                    st = tstat.get("Total Shots")
+                    if st is not None:
+                        shots_total_list.append(int(st) if st else 0)
+                    f = tstat.get("Fouls")
+                    if f is not None:
+                        fouls_list.append(int(f) if f else 0)
+                    p = tstat.get("Ball Possession")
+                    if p is not None:
+                        pval = str(p).replace("%", "")
+                        try:
+                            possession_list.append(float(pval))
+                        except ValueError:
+                            pass
+                    break
+
+        gp = max(len(corners_list), len(yellows_list), 1)
+
+        return TeamExtendedStats(
+            team_id=team_id,
+            team_name=team_name,
+            corners_for_avg=round(sum(corners_list) / len(corners_list), 2) if corners_list else 0,
+            yellow_cards_avg=round(sum(yellows_list) / len(yellows_list), 2) if yellows_list else 0,
+            shots_on_target_avg=round(sum(shots_ot_list) / len(shots_ot_list), 2) if shots_ot_list else 0,
+            shots_total_avg=round(sum(shots_total_list) / len(shots_total_list), 2) if shots_total_list else 0,
+            fouls_committed_avg=round(sum(fouls_list) / len(fouls_list), 2) if fouls_list else 0,
+            possession_avg=round(sum(possession_list) / len(possession_list), 1) if possession_list else 50.0,
+            games_played=gp,
+        )
 
     # ── team id map ─────────────────────────────────────────────────────────
 

@@ -95,7 +95,12 @@ def api_predict():
     h2h = provider.get_h2h(home.name, away.name)
     odds = provider.get_match_odds(home.name, away.name)
 
-    prediction = engine.predict_match(home, away, h2h=h2h, odds_probs=odds)
+    # Get real extended stats (corners, cards, shots) if API available
+    home_ext = provider.get_extended_stats(home.name)
+    away_ext = provider.get_extended_stats(away.name)
+
+    prediction = engine.predict_match(home, away, h2h=h2h, odds_probs=odds,
+                                       home_ext=home_ext, away_ext=away_ext)
 
     return jsonify({
         "home_team": prediction.home_team,
@@ -147,6 +152,7 @@ def api_predict():
             "first_half": prediction.first_half_goals,
             "second_half": prediction.second_half_goals,
         },
+        "extended_data_source": "live" if (home_ext and away_ext) else "estimated",
     })
 
 

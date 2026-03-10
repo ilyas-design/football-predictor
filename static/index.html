@@ -659,7 +659,7 @@
     </div>
 
     <!-- ── Extended Markets ──────────────────────── -->
-    <div class="section-title" data-i18n="extended_markets">Extended Markets</div>
+    <div class="section-title"><span data-i18n="extended_markets">Extended Markets</span> <span class="data-badge" id="extBadge" style="margin-left:0.5rem"></span></div>
 
     <div class="cards-grid">
 
@@ -963,6 +963,16 @@ function renderResults(d) {
   document.getElementById("xgAway").textContent = d.expected_away_goals.toFixed(2);
   document.getElementById("dataBadge").textContent =
     d.is_live ? `${t("live_data")} (${d.data_source})` : t("fallback_data");
+  const extBadge = document.getElementById("extBadge");
+  if (d.extended_data_source === "live") {
+    extBadge.textContent = t("live_data");
+    extBadge.style.background = "rgba(16,185,129,0.15)";
+    extBadge.style.color = "var(--accent)";
+  } else {
+    extBadge.textContent = "Estimated";
+    extBadge.style.background = "rgba(245,158,11,0.15)";
+    extBadge.style.color = "var(--accent3)";
+  }
 
   // Best bet
   const bb = d.best_bet;
