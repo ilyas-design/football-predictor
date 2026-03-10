@@ -105,14 +105,48 @@ def api_predict():
         "away_win": round(prediction.away_win_prob, 2),
         "over_25": round(prediction.over_25_prob, 2),
         "under_25": round(prediction.under_25_prob, 2),
+        "over_15": round(prediction.over_15_prob, 2),
+        "under_15": round(prediction.under_15_prob, 2),
+        "over_35": round(prediction.over_35_prob, 2),
+        "under_35": round(prediction.under_35_prob, 2),
         "btts_yes": round(prediction.btts_yes_prob, 2),
         "btts_no": round(prediction.btts_no_prob, 2),
+        "home_over_05": round(prediction.home_over_05_prob, 2),
+        "away_over_05": round(prediction.away_over_05_prob, 2),
+        "home_over_15": round(prediction.home_over_15_prob, 2),
+        "away_over_15": round(prediction.away_over_15_prob, 2),
         "expected_home_goals": round(prediction.expected_home_goals, 2),
         "expected_away_goals": round(prediction.expected_away_goals, 2),
         "exact_scores": [{"score": s, "probability": round(p, 2)} for s, p in prediction.exact_scores],
         "best_bet": prediction.best_bet,
         "data_source": prediction.data_source,
         "is_live": provider.is_live,
+        # Extended markets
+        "corners": {
+            "expected": prediction.expected_corners,
+            "home": prediction.home_corners,
+            "away": prediction.away_corners,
+            "over_85": prediction.over_85_corners_prob,
+            "over_95": prediction.over_95_corners_prob,
+            "over_105": prediction.over_105_corners_prob,
+        },
+        "cards": {
+            "expected": prediction.expected_cards,
+            "home": prediction.home_cards,
+            "away": prediction.away_cards,
+            "over_35": prediction.over_35_cards_prob,
+            "over_45": prediction.over_45_cards_prob,
+            "over_55": prediction.over_55_cards_prob,
+        },
+        "shots_on_target": {
+            "expected": prediction.expected_shots_on_target,
+            "home": prediction.home_shots_on_target,
+            "away": prediction.away_shots_on_target,
+        },
+        "half_goals": {
+            "first_half": prediction.first_half_goals,
+            "second_half": prediction.second_half_goals,
+        },
     })
 
 

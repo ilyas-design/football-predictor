@@ -375,6 +375,89 @@
       font-variant-numeric: tabular-nums;
     }
 
+    /* ── Extended stats section ───────────────────── */
+    .section-title {
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--text-dim);
+      margin: 1.5rem 0 0.8rem;
+      padding-bottom: 0.4rem;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .stat-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.4rem 0;
+      font-size: 0.85rem;
+    }
+    .stat-row .stat-label { color: var(--text-dim); }
+    .stat-row .stat-value { font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums; }
+
+    .stat-bar-row {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-bottom: 0.4rem;
+    }
+    .stat-bar-label {
+      width: 75px;
+      min-width: 75px;
+      font-size: 0.75rem;
+      color: var(--text-dim);
+    }
+    .stat-bar-outer {
+      flex: 1;
+      height: 18px;
+      background: rgba(255,255,255,0.05);
+      border-radius: 5px;
+      overflow: hidden;
+    }
+    .stat-bar-inner {
+      height: 100%;
+      border-radius: 5px;
+      transition: width 0.6s ease;
+    }
+    .stat-bar-pct {
+      width: 48px;
+      min-width: 48px;
+      text-align: right;
+      font-size: 0.8rem;
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .stat-bar-inner.bar-corners { background: linear-gradient(90deg, #8b5cf6, #6d28d9); }
+    .stat-bar-pct.clr-corners { color: #8b5cf6; }
+    .stat-bar-inner.bar-cards { background: linear-gradient(90deg, #f59e0b, #d97706); }
+    .stat-bar-pct.clr-cards { color: #f59e0b; }
+    .stat-bar-inner.bar-goals { background: linear-gradient(90deg, #10b981, #059669); }
+    .stat-bar-pct.clr-goals { color: #10b981; }
+
+    .split-stat {
+      display: flex;
+      justify-content: space-between;
+      text-align: center;
+      gap: 0.5rem;
+      margin-bottom: 0.3rem;
+    }
+    .split-stat .ss-val {
+      font-size: 1.2rem;
+      font-weight: 700;
+    }
+    .split-stat .ss-label {
+      font-size: 0.7rem;
+      color: var(--text-dim);
+    }
+    .split-stat .ss-item {
+      flex: 1;
+      padding: 0.5rem;
+      background: rgba(255,255,255,0.03);
+      border-radius: 8px;
+    }
+
     /* ── Footer ──────────────────────────────────── */
     footer {
       text-align: center;
@@ -459,6 +542,11 @@
 
       .score-list li { font-size: 0.85rem; }
       .score-list .score-val { font-size: 0.95rem; }
+
+      .stat-bar-label { width: 65px; min-width: 65px; font-size: 0.7rem; }
+      .stat-bar-pct { width: 44px; min-width: 44px; font-size: 0.75rem; }
+      .split-stat .ss-val { font-size: 1rem; }
+      .split-stat .ss-label { font-size: 0.65rem; }
     }
 
     /* ── Very small screens (< 380px) ────────────── */
@@ -470,6 +558,8 @@
       .prob-val { width: 44px; min-width: 44px; font-size: 0.75rem; }
       .gauge-item .val { font-size: 1.1rem; }
       .best-bet .pick { font-size: 1rem; }
+      .stat-bar-label { width: 55px; min-width: 55px; }
+      .split-stat .ss-val { font-size: 0.9rem; }
     }
   </style>
 </head>
@@ -567,6 +657,52 @@
       </div>
 
     </div>
+
+    <!-- ── Extended Markets ──────────────────────── -->
+    <div class="section-title" data-i18n="extended_markets">Extended Markets</div>
+
+    <div class="cards-grid">
+
+      <!-- Goal Thresholds -->
+      <div class="pred-card">
+        <h3 data-i18n="goal_thresholds">Goal Thresholds</h3>
+        <div id="goalThresholds"></div>
+      </div>
+
+      <!-- Team Goals -->
+      <div class="pred-card">
+        <h3 data-i18n="team_goals">Team Goals</h3>
+        <div id="teamGoals"></div>
+      </div>
+
+      <!-- Corners -->
+      <div class="pred-card">
+        <h3 data-i18n="corners">Corners</h3>
+        <div id="cornersExpected"></div>
+        <div id="cornersThresholds" style="margin-top:0.6rem;"></div>
+      </div>
+
+      <!-- Yellow Cards -->
+      <div class="pred-card">
+        <h3 data-i18n="yellow_cards">Yellow Cards</h3>
+        <div id="cardsExpected"></div>
+        <div id="cardsThresholds" style="margin-top:0.6rem;"></div>
+      </div>
+
+      <!-- Shots on Target -->
+      <div class="pred-card">
+        <h3 data-i18n="shots_on_target">Shots on Target</h3>
+        <div id="shotsExpected"></div>
+      </div>
+
+      <!-- Half-Time Goals -->
+      <div class="pred-card">
+        <h3 data-i18n="half_goals">Goals by Half</h3>
+        <div id="halfGoals"></div>
+      </div>
+
+    </div>
+
   </div>
 </div>
 
@@ -607,6 +743,16 @@ const TRANSLATIONS = {
     under: "Under 2.5",
     yes: "Yes",
     no: "No",
+    extended_markets: "Extended Markets",
+    goal_thresholds: "Goal Thresholds",
+    team_goals: "Team Goals",
+    corners: "Corners",
+    yellow_cards: "Yellow Cards",
+    shots_on_target: "Shots on Target",
+    half_goals: "Goals by Half",
+    first_half: "1st Half",
+    second_half: "2nd Half",
+    expected: "Expected",
   },
   fr: {
     title: "Football Predictor Pro",
@@ -635,6 +781,16 @@ const TRANSLATIONS = {
     under: "Moins de 2.5",
     yes: "Oui",
     no: "Non",
+    extended_markets: "March\u00e9s \u00e9tendus",
+    goal_thresholds: "Seuils de buts",
+    team_goals: "Buts par \u00e9quipe",
+    corners: "Corners",
+    yellow_cards: "Cartons jaunes",
+    shots_on_target: "Tirs cadr\u00e9s",
+    half_goals: "Buts par mi-temps",
+    first_half: "1\u00e8re MT",
+    second_half: "2\u00e8me MT",
+    expected: "Attendu",
   },
   ar: {
     title: "\u0645\u062a\u0646\u0628\u0626 \u0643\u0631\u0629 \u0627\u0644\u0642\u062f\u0645 \u0628\u0631\u0648",
@@ -663,6 +819,16 @@ const TRANSLATIONS = {
     under: "\u0623\u0642\u0644 \u0645\u0646 2.5",
     yes: "\u0646\u0639\u0645",
     no: "\u0644\u0627",
+    extended_markets: "\u0627\u0644\u0623\u0633\u0648\u0627\u0642 \u0627\u0644\u0645\u0648\u0633\u0639\u0629",
+    goal_thresholds: "\u062d\u062f\u0648\u062f \u0627\u0644\u0623\u0647\u062f\u0627\u0641",
+    team_goals: "\u0623\u0647\u062f\u0627\u0641 \u0627\u0644\u0641\u0631\u0642",
+    corners: "\u0627\u0644\u0631\u0643\u0646\u064a\u0627\u062a",
+    yellow_cards: "\u0627\u0644\u0628\u0637\u0627\u0642\u0627\u062a \u0627\u0644\u0635\u0641\u0631\u0627\u0621",
+    shots_on_target: "\u0627\u0644\u062a\u0633\u062f\u064a\u062f\u0627\u062a \u0639\u0644\u0649 \u0627\u0644\u0645\u0631\u0645\u0649",
+    half_goals: "\u0627\u0644\u0623\u0647\u062f\u0627\u0641 \u062d\u0633\u0628 \u0627\u0644\u0634\u0648\u0637",
+    first_half: "\u0627\u0644\u0634\u0648\u0637 \u0627\u0644\u0623\u0648\u0644",
+    second_half: "\u0627\u0644\u0634\u0648\u0637 \u0627\u0644\u062b\u0627\u0646\u064a",
+    expected: "\u0627\u0644\u0645\u062a\u0648\u0642\u0639",
   },
 };
 
@@ -827,6 +993,71 @@ function renderResults(d) {
     `<li><span class="score-val">${s.score}</span><span class="score-pct">${s.probability.toFixed(1)}%</span></li>`
   ).join("");
 
+  // ── Extended Markets ──────────────────────────
+
+  // Goal Thresholds
+  document.getElementById("goalThresholds").innerHTML =
+    statBarRow("Over 1.5", d.over_15, "bar-goals", "clr-goals") +
+    statBarRow("Over 2.5", d.over_25, "bar-goals", "clr-goals") +
+    statBarRow("Over 3.5", d.over_35, "bar-goals", "clr-goals");
+
+  // Team Goals
+  document.getElementById("teamGoals").innerHTML =
+    statBarRow(`${shortName(d.home_team)} 1+`, d.home_over_05, "bar-goals", "clr-goals") +
+    statBarRow(`${shortName(d.home_team)} 2+`, d.home_over_15, "bar-goals", "clr-goals") +
+    statBarRow(`${shortName(d.away_team)} 1+`, d.away_over_05, "bar-goals", "clr-goals") +
+    statBarRow(`${shortName(d.away_team)} 2+`, d.away_over_15, "bar-goals", "clr-goals");
+
+  // Corners
+  if (d.corners) {
+    document.getElementById("cornersExpected").innerHTML = splitStat3(
+      shortName(d.home_team), d.corners.home,
+      t("expected"), d.corners.expected,
+      shortName(d.away_team), d.corners.away
+    );
+    document.getElementById("cornersThresholds").innerHTML =
+      statBarRow("Over 8.5", d.corners.over_85, "bar-corners", "clr-corners") +
+      statBarRow("Over 9.5", d.corners.over_95, "bar-corners", "clr-corners") +
+      statBarRow("Over 10.5", d.corners.over_105, "bar-corners", "clr-corners");
+  }
+
+  // Cards
+  if (d.cards) {
+    document.getElementById("cardsExpected").innerHTML = splitStat3(
+      shortName(d.home_team), d.cards.home,
+      t("expected"), d.cards.expected,
+      shortName(d.away_team), d.cards.away
+    );
+    document.getElementById("cardsThresholds").innerHTML =
+      statBarRow("Over 3.5", d.cards.over_35, "bar-cards", "clr-cards") +
+      statBarRow("Over 4.5", d.cards.over_45, "bar-cards", "clr-cards") +
+      statBarRow("Over 5.5", d.cards.over_55, "bar-cards", "clr-cards");
+  }
+
+  // Shots on target
+  if (d.shots_on_target) {
+    document.getElementById("shotsExpected").innerHTML = splitStat3(
+      shortName(d.home_team), d.shots_on_target.home,
+      t("expected"), d.shots_on_target.expected,
+      shortName(d.away_team), d.shots_on_target.away
+    );
+  }
+
+  // Half goals
+  if (d.half_goals) {
+    document.getElementById("halfGoals").innerHTML = `
+      <div class="split-stat">
+        <div class="ss-item">
+          <div class="ss-val" style="color:var(--accent)">${d.half_goals.first_half}</div>
+          <div class="ss-label">${t("first_half")}</div>
+        </div>
+        <div class="ss-item">
+          <div class="ss-val" style="color:var(--accent2)">${d.half_goals.second_half}</div>
+          <div class="ss-label">${t("second_half")}</div>
+        </div>
+      </div>`;
+  }
+
   // Scroll to results
   document.getElementById("results").scrollIntoView({ behavior: "smooth", block: "start" });
 }
@@ -852,6 +1083,34 @@ function gaugePair(v1, l1, v2, l2) {
 
 function shortName(name) {
   return name.split(" ")[0];
+}
+
+function statBarRow(label, pct, barClass, pctClass) {
+  const w = Math.min(100, Math.max(0, pct));
+  return `
+    <div class="stat-bar-row">
+      <div class="stat-bar-label">${label}</div>
+      <div class="stat-bar-outer"><div class="stat-bar-inner ${barClass}" style="width:${w}%"></div></div>
+      <div class="stat-bar-pct ${pctClass}">${pct.toFixed(1)}%</div>
+    </div>`;
+}
+
+function splitStat3(l1, v1, l2, v2, l3, v3) {
+  return `
+    <div class="split-stat">
+      <div class="ss-item">
+        <div class="ss-val" style="color:var(--accent)">${v1}</div>
+        <div class="ss-label">${l1}</div>
+      </div>
+      <div class="ss-item">
+        <div class="ss-val" style="color:var(--accent3)">${v2}</div>
+        <div class="ss-label">${l2}</div>
+      </div>
+      <div class="ss-item">
+        <div class="ss-val" style="color:var(--accent2)">${v3}</div>
+        <div class="ss-label">${l3}</div>
+      </div>
+    </div>`;
 }
 
 function showError(msg) {

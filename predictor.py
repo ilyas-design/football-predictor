@@ -91,6 +91,32 @@ class MatchPrediction:
     best_bet: dict
     confidence: float
     data_source: str = "live"
+    # Extended markets
+    over_15_prob: float = 0.0
+    under_15_prob: float = 0.0
+    over_35_prob: float = 0.0
+    under_35_prob: float = 0.0
+    home_over_05_prob: float = 0.0
+    away_over_05_prob: float = 0.0
+    home_over_15_prob: float = 0.0
+    away_over_15_prob: float = 0.0
+    expected_corners: float = 0.0
+    home_corners: float = 0.0
+    away_corners: float = 0.0
+    over_85_corners_prob: float = 0.0
+    over_95_corners_prob: float = 0.0
+    over_105_corners_prob: float = 0.0
+    expected_cards: float = 0.0
+    home_cards: float = 0.0
+    away_cards: float = 0.0
+    over_35_cards_prob: float = 0.0
+    over_45_cards_prob: float = 0.0
+    over_55_cards_prob: float = 0.0
+    expected_shots_on_target: float = 0.0
+    home_shots_on_target: float = 0.0
+    away_shots_on_target: float = 0.0
+    first_half_goals: float = 0.0
+    second_half_goals: float = 0.0
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # FALLBACK DATA (used when no API keys are configured)
@@ -437,6 +463,148 @@ class PredictionEngine:
         t = sum(blended) or 1
         return tuple(b / t for b in blended)
 
+    # ── Additional goal thresholds ───────────────────────────────────────
+
+    def calculate_team_goals_probs(self, score_probs: Dict[str, float]) -> dict:
+        """Calculate probability of each team scoring over/under thresholds."""
+        home_over_05 = sum(p for s, p in score_probs.items() if int(s.split("-")[0]) >= 1)
+        away_over_05 = sum(p for s, p in score_probs.items() if int(s.split("-")[1]) >= 1)
+        home_over_15 = sum(p for s, p in score_probs.items() if int(s.split("-")[0]) >= 2)
+        away_over_15 = sum(p for s, p in score_probs.items() if int(s.split("-")[1]) >= 2)
+        return {
+            "home_over_05": home_over_05,
+            "away_over_05": away_over_05,
+            "home_over_15": home_over_15,
+            "away_over_15": away_over_15,
+        }
+
+    # ── Corners prediction ───────────────────────────────────────────────
+
+    @staticmethod
+    def predict_corners(home: TeamStats, away: TeamStats, home_xg: float, away_xg: float) -> dict:
+        """Estimate corners from attack strength and expected goals.
+
+        League averages: ~10.2 corners per match (5.5 home, 4.7 away).
+        Corners correlate with attack pressure and goal expectancy.
+        """
+        LEAGUE_AVG_CORNERS = 10.2
+        HOME_CORNER_SHARE = 0.54  # home teams win ~54% of corners
+
+        # Offensive teams create more corners; defensive teams concede more
+        home_attack_factor = (home.attack_strength + (1 / max(away.defense_strength, 0.3))) / 2
+        away_attack_factor = (away.attack_strength + (1 / max(home.defense_strength, 0.3))) / 2
+
+        # Scale by xG ratio relative to league average (more expected goals = more corners)
+        total_xg = home_xg + away_xg
+        xg_ratio = total_xg / 2.65 if total_xg > 0 else 1.0
+
+        total_corners = LEAGUE_AVG_CORNERS * xg_ratio
+        # Split by attack factors
+        factor_sum = home_attack_factor + away_attack_factor
+        home_corners = total_corners * (home_attack_factor / factor_sum) * (HOME_CORNER_SHARE / 0.5)
+        away_corners = total_corners - home_corners
+
+        # Clamp
+        home_corners = max(2.0, min(9.0, home_corners))
+        away_corners = max(1.5, min(8.0, away_corners))
+        total_corners = home_corners + away_corners
+
+        # Over/under probabilities using Poisson approximation
+        def poisson_over(lam, threshold):
+            """P(X > threshold) = 1 - P(X <= floor(threshold))"""
+            under = sum((math.exp(-lam) * lam**k) / math.factorial(k) for k in range(int(threshold) + 1))
+            return 1.0 - under
+
+        return {
+            "expected": round(total_corners, 1),
+            "home": round(home_corners, 1),
+            "away": round(away_corners, 1),
+            "over_85": round(poisson_over(total_corners, 8.5) * 100, 1),
+            "over_95": round(poisson_over(total_corners, 9.5) * 100, 1),
+            "over_105": round(poisson_over(total_corners, 10.5) * 100, 1),
+        }
+
+    # ── Yellow cards prediction ──────────────────────────────────────────
+
+    @staticmethod
+    def predict_cards(home: TeamStats, away: TeamStats, home_xg: float, away_xg: float) -> dict:
+        """Estimate yellow cards from team characteristics.
+
+        League averages: ~4.2 yellow cards per match.
+        Higher cards in: derbies, defensive teams, losing teams.
+        """
+        LEAGUE_AVG_CARDS = 4.2
+
+        # Defensive teams commit more fouls → more cards
+        home_def_factor = max(home.defense_strength, 0.3)  # higher = worse defense = more fouls
+        away_def_factor = max(away.defense_strength, 0.3)
+
+        # Teams in poor form commit more tactical fouls
+        home_form_factor = 1.0 + 0.3 * (1.0 - home.form_rating)
+        away_form_factor = 1.0 + 0.3 * (1.0 - away.form_rating)
+
+        # Competitive matches (close xG) produce more cards
+        xg_diff = abs(home_xg - away_xg)
+        competitiveness = 1.0 + 0.15 * max(0, 1.0 - xg_diff)
+
+        home_cards = (LEAGUE_AVG_CARDS / 2) * home_def_factor * home_form_factor * competitiveness
+        away_cards = (LEAGUE_AVG_CARDS / 2) * away_def_factor * away_form_factor * competitiveness
+
+        # Away teams get slightly more cards
+        away_cards *= 1.08
+
+        home_cards = max(1.0, min(5.0, home_cards))
+        away_cards = max(1.0, min(5.0, away_cards))
+        total_cards = home_cards + away_cards
+
+        def poisson_over(lam, threshold):
+            under = sum((math.exp(-lam) * lam**k) / math.factorial(k) for k in range(int(threshold) + 1))
+            return 1.0 - under
+
+        return {
+            "expected": round(total_cards, 1),
+            "home": round(home_cards, 1),
+            "away": round(away_cards, 1),
+            "over_35": round(poisson_over(total_cards, 3.5) * 100, 1),
+            "over_45": round(poisson_over(total_cards, 4.5) * 100, 1),
+            "over_55": round(poisson_over(total_cards, 5.5) * 100, 1),
+        }
+
+    # ── Shots on target prediction ───────────────────────────────────────
+
+    @staticmethod
+    def predict_shots_on_target(home: TeamStats, away: TeamStats, home_xg: float, away_xg: float) -> dict:
+        """Estimate shots on target. League avg: ~9.4 SOT/match (~0.11 xG per SOT)."""
+        # Roughly 1 SOT per 0.11 xG, but also driven by attack strength
+        home_sot = home_xg / 0.11 * 0.55  # Not all xG comes from SOT
+        away_sot = away_xg / 0.11 * 0.55
+
+        # Adjust by attack strength
+        home_sot *= (0.7 + 0.3 * home.attack_strength)
+        away_sot *= (0.7 + 0.3 * away.attack_strength)
+
+        home_sot = max(1.5, min(9.0, home_sot))
+        away_sot = max(1.0, min(8.0, away_sot))
+
+        return {
+            "expected": round(home_sot + away_sot, 1),
+            "home": round(home_sot, 1),
+            "away": round(away_sot, 1),
+        }
+
+    # ── Half-time goals split ────────────────────────────────────────────
+
+    @staticmethod
+    def predict_half_goals(home_xg: float, away_xg: float) -> dict:
+        """Split expected goals into halves. ~42% of goals scored in first half."""
+        total_xg = home_xg + away_xg
+        first_half = total_xg * 0.42
+        second_half = total_xg * 0.58
+        return {
+            "first_half": round(first_half, 2),
+            "second_half": round(second_half, 2),
+        }
+
     # ── Best bet ────────────────────────────────────────────────────────────
 
     def determine_best_bet(self, pred: dict) -> dict:
@@ -487,8 +655,17 @@ class PredictionEngine:
             hw, d, aw = self.calibrate_with_odds((hw, d, aw), odds_probs)
 
         o25, u25 = self.calculate_over_under(score_probs)
+        o15, u15 = self.calculate_over_under(score_probs, threshold=1.5)
+        o35, u35 = self.calculate_over_under(score_probs, threshold=3.5)
         btts_y, btts_n = self.calculate_btts(home, away, score_probs)
         top_scores = self.get_top_scores(score_probs, 5)
+        team_goals = self.calculate_team_goals_probs(score_probs)
+
+        # Extended predictions
+        corners = self.predict_corners(home, away, home_xg, away_xg)
+        cards = self.predict_cards(home, away, home_xg, away_xg)
+        shots = self.predict_shots_on_target(home, away, home_xg, away_xg)
+        halves = self.predict_half_goals(home_xg, away_xg)
 
         pred_dict = {
             "home_win": hw, "draw": d, "away_win": aw,
@@ -508,6 +685,30 @@ class PredictionEngine:
             expected_home_goals=home_xg, expected_away_goals=away_xg,
             best_bet=best_bet, confidence=best_bet["confidence"],
             data_source=data_source,
+            # Extended markets
+            over_15_prob=o15 * 100, under_15_prob=u15 * 100,
+            over_35_prob=o35 * 100, under_35_prob=u35 * 100,
+            home_over_05_prob=team_goals["home_over_05"] * 100,
+            away_over_05_prob=team_goals["away_over_05"] * 100,
+            home_over_15_prob=team_goals["home_over_15"] * 100,
+            away_over_15_prob=team_goals["away_over_15"] * 100,
+            expected_corners=corners["expected"],
+            home_corners=corners["home"],
+            away_corners=corners["away"],
+            over_85_corners_prob=corners["over_85"],
+            over_95_corners_prob=corners["over_95"],
+            over_105_corners_prob=corners["over_105"],
+            expected_cards=cards["expected"],
+            home_cards=cards["home"],
+            away_cards=cards["away"],
+            over_35_cards_prob=cards["over_35"],
+            over_45_cards_prob=cards["over_45"],
+            over_55_cards_prob=cards["over_55"],
+            expected_shots_on_target=shots["expected"],
+            home_shots_on_target=shots["home"],
+            away_shots_on_target=shots["away"],
+            first_half_goals=halves["first_half"],
+            second_half_goals=halves["second_half"],
         )
 
 # ═══════════════════════════════════════════════════════════════════════════════
