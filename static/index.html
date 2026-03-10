@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" dir="ltr">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -30,12 +30,20 @@
       min-height: 100vh;
     }
 
+    /* ── RTL support ─────────────────────────────── */
+    html[dir="rtl"] body {
+      font-family: 'Segoe UI', 'Tahoma', 'Arial', system-ui, sans-serif;
+    }
+    html[dir="rtl"] .prob-label { text-align: right; }
+    html[dir="rtl"] .prob-val { text-align: left; }
+
     /* ── Header ─────────────────────────────────── */
     header {
       background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%);
       border-bottom: 1px solid var(--border);
       padding: 1.5rem 2rem;
       text-align: center;
+      position: relative;
     }
     header h1 {
       font-size: 1.8rem;
@@ -49,6 +57,36 @@
       color: var(--text-dim);
       font-size: 0.85rem;
       margin-top: 0.3rem;
+    }
+
+    /* ── Language switcher ────────────────────────── */
+    .lang-switcher {
+      position: absolute;
+      top: 1rem;
+      right: 1.5rem;
+      display: flex;
+      gap: 0.3rem;
+    }
+    html[dir="rtl"] .lang-switcher {
+      right: auto;
+      left: 1.5rem;
+    }
+    .lang-btn {
+      background: rgba(255,255,255,0.08);
+      border: 1px solid var(--border);
+      color: var(--text-dim);
+      padding: 0.3rem 0.6rem;
+      border-radius: 6px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .lang-btn:hover { background: rgba(255,255,255,0.12); color: var(--text); }
+    .lang-btn.active {
+      background: rgba(16,185,129,0.2);
+      border-color: var(--accent);
+      color: var(--accent);
     }
 
     /* ── Main layout ────────────────────────────── */
@@ -324,8 +362,13 @@
 <body>
 
 <header>
-  <h1>Football Predictor Pro</h1>
-  <p>Dixon-Coles Model &bull; Live Data &bull; Odds Calibration</p>
+  <div class="lang-switcher">
+    <button class="lang-btn active" onclick="setLang('en')">EN</button>
+    <button class="lang-btn" onclick="setLang('fr')">FR</button>
+    <button class="lang-btn" onclick="setLang('ar')">AR</button>
+  </div>
+  <h1 data-i18n="title">Football Predictor Pro</h1>
+  <p data-i18n="subtitle">Dixon-Coles Model &bull; Live Data &bull; Odds Calibration</p>
 </header>
 
 <div class="container">
@@ -334,20 +377,20 @@
   <div class="form-card">
     <div class="form-row">
       <div>
-        <label for="league">League</label>
+        <label for="league" data-i18n="league">League</label>
         <select id="league"><option>Loading...</option></select>
       </div>
       <div>
-        <label for="home">Home Team</label>
-        <select id="home"><option>Select league first</option></select>
+        <label for="home" data-i18n="home_team">Home Team</label>
+        <select id="home"><option data-i18n="select_league">Select league first</option></select>
       </div>
       <div>
-        <label for="away">Away Team</label>
-        <select id="away"><option>Select league first</option></select>
+        <label for="away" data-i18n="away_team">Away Team</label>
+        <select id="away"><option data-i18n="select_league">Select league first</option></select>
       </div>
     </div>
     <button class="btn" id="predictBtn" onclick="predict()">
-      <span class="btn-text">Predict Match</span>
+      <span class="btn-text" data-i18n="predict_btn">Predict Match</span>
       <div class="spinner"></div>
     </button>
   </div>
@@ -359,12 +402,12 @@
 
     <div class="result-header">
       <h2><span id="rHome"></span> <span class="vs">vs</span> <span id="rAway"></span></h2>
-      <div class="xg-line">Expected Goals: <span id="xgHome"></span> &ndash; <span id="xgAway"></span></div>
+      <div class="xg-line"><span data-i18n="expected_goals">Expected Goals</span>: <span id="xgHome"></span> &ndash; <span id="xgAway"></span></div>
       <div class="data-badge" id="dataBadge"></div>
     </div>
 
     <div class="best-bet" id="bestBet">
-      <div class="label">Best Bet Recommendation</div>
+      <div class="label" data-i18n="best_bet">Best Bet Recommendation</div>
       <div class="pick" id="bbPick"></div>
       <div class="market"><span id="bbMarket"></span> &bull; <span class="conf" id="bbConf"></span></div>
     </div>
@@ -373,14 +416,14 @@
 
       <!-- 1X2 -->
       <div class="pred-card">
-        <h3>Match Outcome (1X2)</h3>
+        <h3 data-i18n="match_outcome">Match Outcome (1X2)</h3>
         <div class="prob-bar-row c-win">
           <div class="prob-label" id="lbl1x2Home">Home</div>
           <div class="prob-bar-wrap"><div class="prob-bar-fill" id="barHome"></div></div>
           <div class="prob-val" id="valHome"></div>
         </div>
         <div class="prob-bar-row c-draw">
-          <div class="prob-label">Draw</div>
+          <div class="prob-label" data-i18n="draw">Draw</div>
           <div class="prob-bar-wrap"><div class="prob-bar-fill" id="barDraw"></div></div>
           <div class="prob-val" id="valDraw"></div>
         </div>
@@ -393,19 +436,19 @@
 
       <!-- Over/Under -->
       <div class="pred-card">
-        <h3>Over / Under 2.5 Goals</h3>
+        <h3 data-i18n="over_under">Over / Under 2.5 Goals</h3>
         <div class="gauge-pair" id="ouGauge"></div>
       </div>
 
       <!-- BTTS -->
       <div class="pred-card">
-        <h3>Both Teams to Score</h3>
+        <h3 data-i18n="btts">Both Teams to Score</h3>
         <div class="gauge-pair" id="bttsGauge"></div>
       </div>
 
       <!-- Exact Scores -->
       <div class="pred-card">
-        <h3>Most Likely Scores</h3>
+        <h3 data-i18n="most_likely_scores">Most Likely Scores</h3>
         <ul class="score-list" id="scoreList"></ul>
       </div>
 
@@ -413,13 +456,153 @@
   </div>
 </div>
 
-<footer>Football Predictor Pro v2.0 &mdash; For educational purposes only. Not financial advice.</footer>
+<footer data-i18n="footer">Football Predictor Pro v2.0 — For educational purposes only. Not financial advice.</footer>
 
 <script>
 const API = "";  // same origin
 
+// ═══════════════════════════════════════════════
+// TRANSLATIONS
+// ═══════════════════════════════════════════════
+
+const TRANSLATIONS = {
+  en: {
+    title: "Football Predictor Pro",
+    subtitle: "Dixon-Coles Model \u2022 Live Data \u2022 Odds Calibration",
+    league: "League",
+    home_team: "Home Team",
+    away_team: "Away Team",
+    select_league: "Select league first",
+    predict_btn: "Predict Match",
+    expected_goals: "Expected Goals",
+    best_bet: "Best Bet Recommendation",
+    match_outcome: "Match Outcome (1X2)",
+    draw: "Draw",
+    over_under: "Over / Under 2.5 Goals",
+    btts: "Both Teams to Score",
+    most_likely_scores: "Most Likely Scores",
+    footer: "Football Predictor Pro v2.0 \u2014 For educational purposes only. Not financial advice.",
+    loading: "Loading teams...",
+    error_loading: "Error loading",
+    error_same_team: "Home and away teams must be different.",
+    error_connect: "Could not connect to backend. Is app.py running?",
+    error_network: "Network error: ",
+    live_data: "Live Data",
+    fallback_data: "Fallback Data",
+    over: "Over 2.5",
+    under: "Under 2.5",
+    yes: "Yes",
+    no: "No",
+  },
+  fr: {
+    title: "Football Predictor Pro",
+    subtitle: "Mod\u00e8le Dixon-Coles \u2022 Donn\u00e9es en direct \u2022 Calibration des cotes",
+    league: "Ligue",
+    home_team: "\u00c9quipe \u00e0 domicile",
+    away_team: "\u00c9quipe \u00e0 l'ext\u00e9rieur",
+    select_league: "S\u00e9lectionnez une ligue",
+    predict_btn: "Pr\u00e9dire le match",
+    expected_goals: "Buts attendus",
+    best_bet: "Meilleur pari recommand\u00e9",
+    match_outcome: "R\u00e9sultat du match (1X2)",
+    draw: "Nul",
+    over_under: "Plus / Moins de 2.5 buts",
+    btts: "Les deux \u00e9quipes marquent",
+    most_likely_scores: "Scores les plus probables",
+    footer: "Football Predictor Pro v2.0 \u2014 \u00c0 des fins \u00e9ducatives uniquement. Pas un conseil financier.",
+    loading: "Chargement des \u00e9quipes...",
+    error_loading: "Erreur de chargement",
+    error_same_team: "Les \u00e9quipes \u00e0 domicile et \u00e0 l'ext\u00e9rieur doivent \u00eatre diff\u00e9rentes.",
+    error_connect: "Impossible de se connecter au serveur. app.py est-il en cours d'ex\u00e9cution ?",
+    error_network: "Erreur r\u00e9seau : ",
+    live_data: "Donn\u00e9es en direct",
+    fallback_data: "Donn\u00e9es de secours",
+    over: "Plus de 2.5",
+    under: "Moins de 2.5",
+    yes: "Oui",
+    no: "Non",
+  },
+  ar: {
+    title: "\u0645\u062a\u0646\u0628\u0626 \u0643\u0631\u0629 \u0627\u0644\u0642\u062f\u0645 \u0628\u0631\u0648",
+    subtitle: "\u0646\u0645\u0648\u0630\u062c \u062f\u064a\u0643\u0633\u0648\u0646-\u0643\u0648\u0644\u0632 \u2022 \u0628\u064a\u0627\u0646\u0627\u062a \u0645\u0628\u0627\u0634\u0631\u0629 \u2022 \u0645\u0639\u0627\u064a\u0631\u0629 \u0627\u0644\u0623\u0631\u062c\u062d\u064a\u0627\u062a",
+    league: "\u0627\u0644\u062f\u0648\u0631\u064a",
+    home_team: "\u0641\u0631\u064a\u0642 \u0627\u0644\u0623\u0631\u0636",
+    away_team: "\u0627\u0644\u0641\u0631\u064a\u0642 \u0627\u0644\u0632\u0627\u0626\u0631",
+    select_league: "\u0627\u062e\u062a\u0631 \u0627\u0644\u062f\u0648\u0631\u064a \u0623\u0648\u0644\u0627\u064b",
+    predict_btn: "\u062a\u0648\u0642\u0639 \u0627\u0644\u0645\u0628\u0627\u0631\u0627\u0629",
+    expected_goals: "\u0627\u0644\u0623\u0647\u062f\u0627\u0641 \u0627\u0644\u0645\u062a\u0648\u0642\u0639\u0629",
+    best_bet: "\u0623\u0641\u0636\u0644 \u062a\u0648\u0635\u064a\u0629 \u0631\u0647\u0627\u0646",
+    match_outcome: "\u0646\u062a\u064a\u062c\u0629 \u0627\u0644\u0645\u0628\u0627\u0631\u0627\u0629 (1X2)",
+    draw: "\u062a\u0639\u0627\u062f\u0644",
+    over_under: "\u0623\u0643\u062b\u0631 / \u0623\u0642\u0644 \u0645\u0646 2.5 \u0647\u062f\u0641",
+    btts: "\u0643\u0644\u0627 \u0627\u0644\u0641\u0631\u064a\u0642\u064a\u0646 \u064a\u0633\u062c\u0644\u0627\u0646",
+    most_likely_scores: "\u0627\u0644\u0646\u062a\u0627\u0626\u062c \u0627\u0644\u0623\u0643\u062b\u0631 \u0627\u062d\u062a\u0645\u0627\u0644\u0627\u064b",
+    footer: "\u0645\u062a\u0646\u0628\u0626 \u0643\u0631\u0629 \u0627\u0644\u0642\u062f\u0645 \u0628\u0631\u0648 v2.0 \u2014 \u0644\u0623\u063a\u0631\u0627\u0636 \u062a\u0639\u0644\u064a\u0645\u064a\u0629 \u0641\u0642\u0637. \u0644\u064a\u0633 \u0646\u0635\u064a\u062d\u0629 \u0645\u0627\u0644\u064a\u0629.",
+    loading: "\u062c\u0627\u0631\u064a \u062a\u062d\u0645\u064a\u0644 \u0627\u0644\u0641\u0631\u0642...",
+    error_loading: "\u062e\u0637\u0623 \u0641\u064a \u0627\u0644\u062a\u062d\u0645\u064a\u0644",
+    error_same_team: "\u064a\u062c\u0628 \u0623\u0646 \u064a\u0643\u0648\u0646 \u0641\u0631\u064a\u0642 \u0627\u0644\u0623\u0631\u0636 \u0648\u0627\u0644\u0641\u0631\u064a\u0642 \u0627\u0644\u0632\u0627\u0626\u0631 \u0645\u062e\u062a\u0644\u0641\u064a\u0646.",
+    error_connect: "\u062a\u0639\u0630\u0631 \u0627\u0644\u0627\u062a\u0635\u0627\u0644 \u0628\u0627\u0644\u062e\u0627\u062f\u0645. \u0647\u0644 app.py \u0642\u064a\u062f \u0627\u0644\u062a\u0634\u063a\u064a\u0644\u061f",
+    error_network: "\u062e\u0637\u0623 \u0641\u064a \u0627\u0644\u0634\u0628\u0643\u0629: ",
+    live_data: "\u0628\u064a\u0627\u0646\u0627\u062a \u0645\u0628\u0627\u0634\u0631\u0629",
+    fallback_data: "\u0628\u064a\u0627\u0646\u0627\u062a \u0627\u062d\u062a\u064a\u0627\u0637\u064a\u0629",
+    over: "\u0623\u0643\u062b\u0631 \u0645\u0646 2.5",
+    under: "\u0623\u0642\u0644 \u0645\u0646 2.5",
+    yes: "\u0646\u0639\u0645",
+    no: "\u0644\u0627",
+  },
+};
+
+let currentLang = localStorage.getItem("lang") || "en";
+
+function t(key) {
+  return (TRANSLATIONS[currentLang] && TRANSLATIONS[currentLang][key]) || TRANSLATIONS.en[key] || key;
+}
+
+function setLang(lang) {
+  currentLang = lang;
+  localStorage.setItem("lang", lang);
+
+  // Set RTL for Arabic
+  const html = document.documentElement;
+  if (lang === "ar") {
+    html.setAttribute("dir", "rtl");
+    html.setAttribute("lang", "ar");
+  } else {
+    html.setAttribute("dir", "ltr");
+    html.setAttribute("lang", lang);
+  }
+
+  // Update active button
+  document.querySelectorAll(".lang-btn").forEach(btn => {
+    btn.classList.toggle("active", btn.textContent.trim().toLowerCase() === lang.toUpperCase().toLowerCase() ||
+      (lang === "en" && btn.textContent.trim() === "EN") ||
+      (lang === "fr" && btn.textContent.trim() === "FR") ||
+      (lang === "ar" && btn.textContent.trim() === "AR"));
+  });
+
+  // Update all elements with data-i18n
+  document.querySelectorAll("[data-i18n]").forEach(el => {
+    const key = el.getAttribute("data-i18n");
+    el.textContent = t(key);
+  });
+
+  // Re-render results if visible
+  if (document.getElementById("results").style.display === "block" && lastResult) {
+    renderResults(lastResult);
+  }
+}
+
+// ═══════════════════════════════════════════════
+// APP LOGIC
+// ═══════════════════════════════════════════════
+
+let lastResult = null;
+
 // ── Load leagues on startup ──────────────────
 async function init() {
+  // Apply saved language
+  setLang(currentLang);
+
   try {
     const leagues = await (await fetch(`${API}/api/leagues`)).json();
     const sel = document.getElementById("league");
@@ -429,7 +612,7 @@ async function init() {
     sel.addEventListener("change", loadTeams);
     loadTeams();
   } catch(e) {
-    showError("Could not connect to backend. Is app.py running?");
+    showError(t("error_connect"));
   }
 }
 
@@ -438,8 +621,8 @@ async function loadTeams() {
   const league = document.getElementById("league").value;
   const homeSel = document.getElementById("home");
   const awaySel = document.getElementById("away");
-  homeSel.innerHTML = `<option>Loading teams...</option>`;
-  awaySel.innerHTML = `<option>Loading teams...</option>`;
+  homeSel.innerHTML = `<option>${t("loading")}</option>`;
+  awaySel.innerHTML = `<option>${t("loading")}</option>`;
 
   try {
     const data = await (await fetch(`${API}/api/leagues/${encodeURIComponent(league)}/teams`)).json();
@@ -448,7 +631,7 @@ async function loadTeams() {
     awaySel.innerHTML = opts;
     if (data.teams.length > 1) awaySel.selectedIndex = 1;
   } catch(e) {
-    homeSel.innerHTML = `<option>Error loading</option>`;
+    homeSel.innerHTML = `<option>${t("error_loading")}</option>`;
   }
 }
 
@@ -459,7 +642,7 @@ async function predict() {
   const home = document.getElementById("home").value;
   const away = document.getElementById("away").value;
 
-  if (home === away) { showError("Home and away teams must be different."); return; }
+  if (home === away) { showError(t("error_same_team")); return; }
 
   btn.classList.add("loading");
   btn.disabled = true;
@@ -479,9 +662,10 @@ async function predict() {
       return;
     }
 
+    lastResult = data;
     renderResults(data);
   } catch(e) {
-    showError("Network error: " + e.message);
+    showError(t("error_network") + e.message);
   } finally {
     btn.classList.remove("loading");
     btn.disabled = false;
@@ -498,7 +682,7 @@ function renderResults(d) {
   document.getElementById("xgHome").textContent = d.expected_home_goals.toFixed(2);
   document.getElementById("xgAway").textContent = d.expected_away_goals.toFixed(2);
   document.getElementById("dataBadge").textContent =
-    d.is_live ? `Live Data (${d.data_source})` : "Fallback Data";
+    d.is_live ? `${t("live_data")} (${d.data_source})` : t("fallback_data");
 
   // Best bet
   const bb = d.best_bet;
@@ -515,12 +699,12 @@ function renderResults(d) {
 
   // Over/Under
   document.getElementById("ouGauge").innerHTML = gaugePair(
-    d.over_25, "Over 2.5", d.under_25, "Under 2.5"
+    d.over_25, t("over"), d.under_25, t("under")
   );
 
   // BTTS
   document.getElementById("bttsGauge").innerHTML = gaugePair(
-    d.btts_yes, "Yes", d.btts_no, "No"
+    d.btts_yes, t("yes"), d.btts_no, t("no")
   );
 
   // Exact scores
@@ -553,7 +737,6 @@ function gaugePair(v1, l1, v2, l2) {
 }
 
 function shortName(name) {
-  // "Newcastle United FC" -> "Newcastle"
   return name.split(" ")[0];
 }
 
