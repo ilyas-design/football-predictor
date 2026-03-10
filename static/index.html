@@ -28,6 +28,8 @@
       background: var(--bg);
       color: var(--text);
       min-height: 100vh;
+      -webkit-text-size-adjust: 100%;
+      overflow-x: hidden;
     }
 
     /* ── RTL support ─────────────────────────────── */
@@ -41,7 +43,8 @@
     header {
       background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%);
       border-bottom: 1px solid var(--border);
-      padding: 1.5rem 2rem;
+      padding: 1.2rem 1rem;
+      padding-top: 3rem;
       text-align: center;
       position: relative;
     }
@@ -62,25 +65,28 @@
     /* ── Language switcher ────────────────────────── */
     .lang-switcher {
       position: absolute;
-      top: 1rem;
-      right: 1.5rem;
+      top: 0.7rem;
+      right: 1rem;
       display: flex;
       gap: 0.3rem;
+      z-index: 10;
     }
     html[dir="rtl"] .lang-switcher {
       right: auto;
-      left: 1.5rem;
+      left: 1rem;
     }
     .lang-btn {
       background: rgba(255,255,255,0.08);
       border: 1px solid var(--border);
       color: var(--text-dim);
-      padding: 0.3rem 0.6rem;
+      padding: 0.35rem 0.65rem;
       border-radius: 6px;
       font-size: 0.75rem;
       font-weight: 600;
       cursor: pointer;
       transition: all 0.2s;
+      -webkit-tap-highlight-color: transparent;
+      touch-action: manipulation;
     }
     .lang-btn:hover { background: rgba(255,255,255,0.12); color: var(--text); }
     .lang-btn.active {
@@ -92,8 +98,8 @@
     /* ── Main layout ────────────────────────────── */
     .container {
       max-width: 900px;
-      margin: 2rem auto;
-      padding: 0 1.5rem;
+      margin: 1.5rem auto;
+      padding: 0 1rem;
     }
 
     /* ── Form card ──────────────────────────────── */
@@ -101,17 +107,14 @@
       background: var(--card);
       border: 1px solid var(--border);
       border-radius: 12px;
-      padding: 2rem;
-      margin-bottom: 2rem;
+      padding: 1.2rem;
+      margin-bottom: 1.5rem;
     }
     .form-row {
       display: grid;
       grid-template-columns: 1fr 1fr 1fr;
       gap: 1rem;
       margin-bottom: 1.2rem;
-    }
-    @media (max-width: 640px) {
-      .form-row { grid-template-columns: 1fr; }
     }
 
     label {
@@ -126,14 +129,27 @@
 
     select, input[type="text"] {
       width: 100%;
-      padding: 0.7rem 1rem;
+      padding: 0.7rem 0.8rem;
       background: var(--bg);
       border: 1px solid var(--border);
       border-radius: 8px;
       color: var(--text);
-      font-size: 0.95rem;
+      font-size: 16px; /* prevents iOS zoom on focus */
       outline: none;
       transition: border-color 0.2s;
+      -webkit-appearance: none;
+      appearance: none;
+    }
+    select {
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%2394a3b8' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 0.8rem center;
+      padding-right: 2.2rem;
+    }
+    html[dir="rtl"] select {
+      background-position: left 0.8rem center;
+      padding-right: 0.8rem;
+      padding-left: 2.2rem;
     }
     select:focus, input:focus {
       border-color: var(--accent);
@@ -146,7 +162,7 @@
       justify-content: center;
       gap: 0.5rem;
       width: 100%;
-      padding: 0.85rem 1.5rem;
+      padding: 0.9rem 1.5rem;
       background: linear-gradient(135deg, #10b981, #059669);
       color: #fff;
       border: none;
@@ -155,6 +171,8 @@
       font-weight: 600;
       cursor: pointer;
       transition: opacity 0.2s, transform 0.1s;
+      -webkit-tap-highlight-color: transparent;
+      touch-action: manipulation;
     }
     .btn:hover { opacity: 0.9; }
     .btn:active { transform: scale(0.98); }
@@ -182,10 +200,11 @@
       background: rgba(239,68,68,0.1);
       border: 1px solid rgba(239,68,68,0.3);
       border-radius: 8px;
-      padding: 1rem;
+      padding: 0.8rem 1rem;
       margin-bottom: 1.5rem;
       color: var(--danger);
-      font-size: 0.9rem;
+      font-size: 0.85rem;
+      word-break: break-word;
     }
 
     /* ── Results ─────────────────────────────────── */
@@ -193,11 +212,12 @@
 
     .result-header {
       text-align: center;
-      margin-bottom: 1.5rem;
+      margin-bottom: 1.2rem;
     }
     .result-header h2 {
-      font-size: 1.5rem;
+      font-size: 1.3rem;
       margin-bottom: 0.3rem;
+      word-break: break-word;
     }
     .result-header .vs { color: var(--text-dim); font-weight: 400; }
     .result-header .xg-line {
@@ -221,8 +241,8 @@
       background: linear-gradient(135deg, rgba(245,158,11,0.12), rgba(245,158,11,0.04));
       border: 1px solid rgba(245,158,11,0.3);
       border-radius: 12px;
-      padding: 1.2rem 1.5rem;
-      margin-bottom: 1.5rem;
+      padding: 1rem 1.2rem;
+      margin-bottom: 1.2rem;
       text-align: center;
     }
     .best-bet .label {
@@ -233,9 +253,10 @@
       margin-bottom: 0.4rem;
     }
     .best-bet .pick {
-      font-size: 1.3rem;
+      font-size: 1.2rem;
       font-weight: 700;
       color: #fff;
+      word-break: break-word;
     }
     .best-bet .market {
       font-size: 0.85rem;
@@ -252,21 +273,18 @@
     .cards-grid {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 1rem;
+      gap: 0.8rem;
       margin-bottom: 1.5rem;
-    }
-    @media (max-width: 640px) {
-      .cards-grid { grid-template-columns: 1fr; }
     }
 
     .pred-card {
       background: var(--card);
       border: 1px solid var(--border);
       border-radius: 10px;
-      padding: 1.2rem;
+      padding: 1rem;
     }
     .pred-card h3 {
-      font-size: 0.75rem;
+      font-size: 0.7rem;
       text-transform: uppercase;
       letter-spacing: 0.05em;
       color: var(--text-dim);
@@ -278,19 +296,25 @@
       display: flex;
       align-items: center;
       margin-bottom: 0.5rem;
+      gap: 0.4rem;
     }
     .prob-label {
-      width: 90px;
-      font-size: 0.85rem;
+      width: 70px;
+      min-width: 70px;
+      font-size: 0.8rem;
       color: var(--text-dim);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
     .prob-bar-wrap {
       flex: 1;
-      height: 24px;
+      height: 22px;
       background: rgba(255,255,255,0.05);
       border-radius: 6px;
       overflow: hidden;
       position: relative;
+      min-width: 0;
     }
     .prob-bar-fill {
       height: 100%;
@@ -298,9 +322,10 @@
       transition: width 0.6s ease;
     }
     .prob-val {
-      width: 55px;
+      width: 52px;
+      min-width: 52px;
       text-align: right;
-      font-size: 0.9rem;
+      font-size: 0.85rem;
       font-weight: 600;
     }
     .c-win .prob-bar-fill { background: linear-gradient(90deg, #10b981, #059669); }
@@ -317,7 +342,7 @@
       text-align: center;
     }
     .gauge-item .val {
-      font-size: 1.6rem;
+      font-size: 1.5rem;
       font-weight: 700;
     }
     .gauge-item .lbl {
@@ -353,9 +378,98 @@
     /* ── Footer ──────────────────────────────────── */
     footer {
       text-align: center;
-      padding: 2rem;
+      padding: 1.5rem 1rem;
       color: var(--text-dim);
-      font-size: 0.75rem;
+      font-size: 0.7rem;
+    }
+
+    /* ══════════════════════════════════════════════ */
+    /* MOBILE RESPONSIVE — max 640px                 */
+    /* ══════════════════════════════════════════════ */
+    @media (max-width: 640px) {
+      header {
+        padding: 2.8rem 0.8rem 1rem;
+      }
+      header h1 { font-size: 1.4rem; }
+      header p { font-size: 0.75rem; }
+
+      .lang-switcher {
+        top: 0.5rem;
+        right: 0.6rem;
+      }
+      html[dir="rtl"] .lang-switcher {
+        left: 0.6rem;
+      }
+      .lang-btn {
+        padding: 0.3rem 0.55rem;
+        font-size: 0.7rem;
+      }
+
+      .container {
+        margin: 1rem auto;
+        padding: 0 0.7rem;
+      }
+
+      .form-card {
+        padding: 1rem;
+        border-radius: 10px;
+      }
+      .form-row {
+        grid-template-columns: 1fr;
+        gap: 0.8rem;
+      }
+
+      select, input[type="text"] {
+        padding: 0.65rem 0.7rem;
+      }
+
+      .btn {
+        padding: 0.85rem 1rem;
+        font-size: 0.95rem;
+      }
+
+      .result-header h2 { font-size: 1.15rem; }
+
+      .best-bet {
+        padding: 0.9rem 1rem;
+        border-radius: 10px;
+      }
+      .best-bet .pick { font-size: 1.1rem; }
+
+      .cards-grid {
+        grid-template-columns: 1fr;
+        gap: 0.7rem;
+      }
+
+      .pred-card { padding: 0.9rem; }
+
+      .prob-label {
+        width: 60px;
+        min-width: 60px;
+        font-size: 0.75rem;
+      }
+      .prob-bar-wrap { height: 20px; }
+      .prob-val {
+        width: 48px;
+        min-width: 48px;
+        font-size: 0.8rem;
+      }
+
+      .gauge-item .val { font-size: 1.3rem; }
+
+      .score-list li { font-size: 0.85rem; }
+      .score-list .score-val { font-size: 0.95rem; }
+    }
+
+    /* ── Very small screens (< 380px) ────────────── */
+    @media (max-width: 380px) {
+      header h1 { font-size: 1.2rem; }
+      .container { padding: 0 0.5rem; }
+      .form-card { padding: 0.8rem; }
+      .prob-label { width: 50px; min-width: 50px; font-size: 0.7rem; }
+      .prob-val { width: 44px; min-width: 44px; font-size: 0.75rem; }
+      .gauge-item .val { font-size: 1.1rem; }
+      .best-bet .pick { font-size: 1rem; }
     }
   </style>
 </head>
