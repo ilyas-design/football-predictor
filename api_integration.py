@@ -22,7 +22,7 @@ import pickle
 from pathlib import Path
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import os
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -338,6 +338,95 @@ class TeamData:
     failed_to_score: int
 
 @dataclass
+class CumulativeTeam:
+    """Season-to-date totals for walk-forward backtesting (one team)."""
+
+    name: str
+    team_id: int = 0
+    hw: int = 0
+    hd: int = 0
+    hl: int = 0
+    aw: int = 0
+    ad: int = 0
+    al: int = 0
+    hgf: int = 0
+    hga: int = 0
+    agf: int = 0
+    aga: int = 0
+    clean_sheets: int = 0
+    failed_to_score: int = 0
+    form_events: List[str] = field(default_factory=list)
+
+    def games_played(self) -> int:
+        return self.hw + self.hd + self.hl + self.aw + self.ad + self.al
+
+    def add_home_result(self, home_goals: int, away_goals: int) -> None:
+        self.hgf += home_goals
+        self.hga += away_goals
+        if home_goals > away_goals:
+            self.hw += 1
+            self.form_events.append("W")
+        elif home_goals < away_goals:
+            self.hl += 1
+            self.form_events.append("L")
+        else:
+            self.hd += 1
+            self.form_events.append("D")
+        if away_goals == 0:
+            self.clean_sheets += 1
+        if home_goals == 0:
+            self.failed_to_score += 1
+        if len(self.form_events) > 12:
+            self.form_events = self.form_events[-10:]
+
+    def add_away_result(self, home_goals: int, away_goals: int) -> None:
+        self.agf += away_goals
+        self.aga += home_goals
+        if away_goals > home_goals:
+            self.aw += 1
+            self.form_events.append("W")
+        elif away_goals < home_goals:
+            self.al += 1
+            self.form_events.append("L")
+        else:
+            self.ad += 1
+            self.form_events.append("D")
+        if home_goals == 0:
+            self.clean_sheets += 1
+        if away_goals == 0:
+            self.failed_to_score += 1
+        if len(self.form_events) > 12:
+            self.form_events = self.form_events[-10:]
+
+    def to_team_data(self) -> "TeamData":
+        gp = max(self.games_played(), 1)
+        form = "".join(self.form_events[-5:])
+        return TeamData(
+            id=self.team_id,
+            name=self.name,
+            logo="",
+            games_played=gp,
+            wins=self.hw + self.aw,
+            draws=self.hd + self.ad,
+            losses=self.hl + self.al,
+            goals_for=self.hgf + self.agf,
+            goals_against=self.hga + self.aga,
+            home_wins=self.hw,
+            home_draws=self.hd,
+            home_losses=self.hl,
+            home_goals_for=self.hgf,
+            home_goals_against=self.hga,
+            away_wins=self.aw,
+            away_draws=self.ad,
+            away_losses=self.al,
+            away_goals_for=self.agf,
+            away_goals_against=self.aga,
+            form=form,
+            clean_sheets=self.clean_sheets,
+            failed_to_score=self.failed_to_score,
+        )
+
+@dataclass
 class TeamExtendedStats:
     """Real team-level statistics from API (corners, cards, shots, etc.)."""
     team_id: int
@@ -551,6 +640,7 @@ class APIFootball:
                     home_goals=fix["goals"]["home"] or 0,
                     away_goals=fix["goals"]["away"] or 0,
                 ))
+        results.sort(key=lambda r: r.date)
         return results
 
     # ── team detailed statistics ────────────────────────────────────────────
@@ -973,6 +1063,11 @@ class DataProcessor:
             "home_defense": round(home_defense, 3),
             "away_defense": round(away_defense, 3),
         }
+
+    @staticmethod
+    def build_team_stats_from_cumulative(c: CumulativeTeam, league_avg_goals: float, form_decay: float = 0.85) -> dict:
+        """Same pipeline as build_team_stats for walk-forward cumulative totals."""
+        return DataProcessor.build_team_stats(c.to_team_data(), league_avg_goals, form_decay)
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # UTILITY

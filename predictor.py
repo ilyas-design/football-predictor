@@ -21,6 +21,7 @@ import math
 import json
 import os
 import argparse
+from collections import defaultdict
 from datetime import datetime
 from dataclasses import dataclass
 from typing import List, Tuple, Dict, Optional
@@ -34,6 +35,7 @@ except ImportError:
 from api_integration import (
     APIFootball, OddsAPI, FootballDataOrg, DataProcessor,
     ResponseCache, LEAGUES, TeamData, TeamExtendedStats, FixtureData, MatchResult,
+    CumulativeTeam,
     get_available_leagues, check_api_availability, clear_cache,
     FOOTBALL_DATA_KEY,
 )
@@ -42,7 +44,7 @@ from api_integration import (
 # CONFIGURATION
 # ═══════════════════════════════════════════════════════════════════════════════
 
-VERSION = "2.1.0"
+VERSION = "2.2.0"
 SCRIPT_NAME = "FOOTBALL PREDICTOR PRO"
 
 class Colors:
@@ -79,6 +81,38 @@ class TeamStats:
     away_attack: float = 0.0
     home_defense: float = 0.0
     away_defense: float = 0.0
+
+def _split_team_ratings(t: TeamStats) -> Tuple[float, float, float, float]:
+    ha = t.home_attack if t.home_attack > 1e-9 else t.attack_strength
+    aa = t.away_attack if t.away_attack > 1e-9 else t.attack_strength
+    hd = t.home_defense if t.home_defense > 1e-9 else t.defense_strength
+    ad = t.away_defense if t.away_defense > 1e-9 else t.defense_strength
+    return ha, aa, hd, ad
+
+def _clip_mean(xs: List[float], lo: float, hi: float) -> float:
+    if not xs:
+        return 1.0
+    m = sum(xs) / len(xs)
+    return max(lo, min(hi, m))
+
+def _stats_dict_to_team_stats(info: dict) -> TeamStats:
+    return TeamStats(
+        name=info["name"],
+        attack_strength=info["attack_strength"],
+        defense_strength=info["defense_strength"],
+        home_advantage=info["home_advantage"],
+        form_rating=info["form_rating"],
+        avg_goals_scored=info["avg_goals_scored"],
+        avg_goals_conceded=info["avg_goals_conceded"],
+        clean_sheet_pct=info["clean_sheet_pct"],
+        btts_pct=info["btts_pct"],
+        team_id=info.get("id", 0),
+        games_played=info.get("games_played", 1),
+        home_attack=info.get("home_attack", 0.0),
+        away_attack=info.get("away_attack", 0.0),
+        home_defense=info.get("home_defense", 0.0),
+        away_defense=info.get("away_defense", 0.0),
+    )
 
 @dataclass
 class MatchPrediction:
@@ -208,6 +242,65 @@ class LiveDataProvider:
         self.is_live = True
         print(f"  Loaded {len(self.team_stats)} teams via {source} (avg {self.league_avg_goals:.2f} goals/game)")
 
+    def _apply_opponent_strength_adjustment(self) -> None:
+        """SoS-adjust home/away ratings using finished fixtures (reduces schedule bias)."""
+        if not self.api.is_available() or not self.team_stats:
+            return
+        results = self.api.get_past_results(self.league_id)
+        if len(results) < 10:
+            return
+        ha_sos: Dict[str, List[float]] = defaultdict(list)
+        aa_sos: Dict[str, List[float]] = defaultdict(list)
+        hd_sos: Dict[str, List[float]] = defaultdict(list)
+        ad_sos: Dict[str, List[float]] = defaultdict(list)
+        clip_lo, clip_hi = 0.72, 1.38
+        for r in results:
+            ht = self.team_stats.get(r.home_team)
+            at = self.team_stats.get(r.away_team)
+            if ht is None or at is None:
+                continue
+            h_ha, _, h_hd, _ = _split_team_ratings(ht)
+            _, a_aa, _, a_ad = _split_team_ratings(at)
+            ha_sos[r.home_team].append(a_ad)
+            hd_sos[r.home_team].append(a_aa)
+            aa_sos[r.away_team].append(h_hd)
+            ad_sos[r.away_team].append(h_ha)
+        teams = list(self.team_stats.values())
+        for ts in teams:
+            name = ts.name
+            ha = ts.home_attack if ts.home_attack > 1e-9 else ts.attack_strength
+            aa = ts.away_attack if ts.away_attack > 1e-9 else ts.attack_strength
+            hd = ts.home_defense if ts.home_defense > 1e-9 else ts.defense_strength
+            ad = ts.away_defense if ts.away_defense > 1e-9 else ts.defense_strength
+            if len(ha_sos[name]) >= 2:
+                ha *= 1.0 / _clip_mean(ha_sos[name], clip_lo, clip_hi)
+            if len(aa_sos[name]) >= 2:
+                aa *= 1.0 / _clip_mean(aa_sos[name], clip_lo, clip_hi)
+            if len(hd_sos[name]) >= 2:
+                hd *= 1.0 / _clip_mean(hd_sos[name], clip_lo, clip_hi)
+            if len(ad_sos[name]) >= 2:
+                ad *= 1.0 / _clip_mean(ad_sos[name], clip_lo, clip_hi)
+            ts.home_attack = ha
+            ts.away_attack = aa
+            ts.home_defense = hd
+            ts.away_defense = ad
+        for attr in ("home_attack", "away_attack", "home_defense", "away_defense"):
+            fb = "attack_strength" if "attack" in attr else "defense_strength"
+            vals = []
+            for t in teams:
+                v = getattr(t, attr)
+                if v <= 1e-9:
+                    v = getattr(t, fb)
+                vals.append(v)
+            m = sum(vals) / len(vals) if vals else 1.0
+            if m < 1e-6:
+                continue
+            for t in teams:
+                v = getattr(t, attr)
+                if v <= 1e-9:
+                    v = getattr(t, fb)
+                setattr(t, attr, v / m)
+
     def load(self) -> bool:
         """Load league data. Tries API-Football first, then Football-Data.org."""
         # Try API-Football first
@@ -216,6 +309,7 @@ class LiveDataProvider:
             teams_raw = self.api.get_standings(self.league_id)
             if teams_raw:
                 self._ingest_teams(teams_raw, "API-Football")
+                self._apply_opponent_strength_adjustment()
                 return True
             print(f"  API-Football failed, trying Football-Data.org...")
 
@@ -225,6 +319,7 @@ class LiveDataProvider:
             teams_raw = self.fdo.get_standings_as_team_data(self.fdo_code)
             if teams_raw:
                 self._ingest_teams(teams_raw, "Football-Data.org")
+                self._apply_opponent_strength_adjustment()
                 return True
             print(f"  Football-Data.org also failed.")
 
@@ -318,11 +413,7 @@ class PredictionEngine:
     @staticmethod
     def _split_ratings(t: TeamStats) -> Tuple[float, float, float, float]:
         """Home/away attack & defense; fall back to overall strengths when unset (demo DB)."""
-        ha = t.home_attack if t.home_attack > 1e-9 else t.attack_strength
-        aa = t.away_attack if t.away_attack > 1e-9 else t.attack_strength
-        hd = t.home_defense if t.home_defense > 1e-9 else t.defense_strength
-        ad = t.away_defense if t.away_defense > 1e-9 else t.defense_strength
-        return ha, aa, hd, ad
+        return _split_team_ratings(t)
 
     # ── Poisson base ────────────────────────────────────────────────────────
 
@@ -779,78 +870,88 @@ class Backtester:
         self.provider = provider
 
     def run(self, min_matchday: int = 8) -> dict:
-        """Backtest against completed results. Only predicts after min_matchday
-        matchdays of data are available for each team."""
+        """Backtest on completed results. Rebuilds each team's stats from *prior* games only."""
         results = self.provider.get_past_results()
         if not results:
             print(f"{Colors.RED}  No historical results available for backtesting.{Colors.END}")
             return {}
 
-        # Sort chronologically
         results.sort(key=lambda r: r.date)
 
-        # Walk forward
         correct_1x2 = 0
         total_tested = 0
         brier_sum = 0.0
         log_loss_sum = 0.0
         calibration_buckets: Dict[int, List[int]] = {i: [] for i in range(0, 101, 10)}
 
-        team_games: Dict[str, int] = {}
+        states: Dict[str, CumulativeTeam] = {}
+        completed = 0
+        total_goals = 0
+        saved_league_avg = self.engine.league_avg
 
-        for i, r in enumerate(results):
-            # Count games played per team up to this point
-            hg_count = team_games.get(r.home_team, 0)
-            ag_count = team_games.get(r.away_team, 0)
+        for r in results:
+            ht_key, at_key = r.home_team, r.away_team
+            if ht_key not in states:
+                states[ht_key] = CumulativeTeam(
+                    name=ht_key,
+                    team_id=self.provider.team_id_map.get(ht_key, 0),
+                )
+            if at_key not in states:
+                states[at_key] = CumulativeTeam(
+                    name=at_key,
+                    team_id=self.provider.team_id_map.get(at_key, 0),
+                )
 
-            # Update counts
-            team_games[r.home_team] = hg_count + 1
-            team_games[r.away_team] = ag_count + 1
+            ht_state = states[ht_key]
+            at_state = states[at_key]
 
-            # Skip early matchdays
-            if hg_count < min_matchday or ag_count < min_matchday:
-                continue
+            if (ht_state.games_played() >= min_matchday and at_state.games_played() >= min_matchday):
+                league_avg = total_goals / max(1, completed)
+                league_avg = max(2.0, min(3.4, league_avg))
 
-            ht = self.provider.get_team(r.home_team)
-            at = self.provider.get_team(r.away_team)
-            if ht is None or at is None:
-                continue
+                info_h = DataProcessor.build_team_stats_from_cumulative(ht_state, league_avg)
+                info_a = DataProcessor.build_team_stats_from_cumulative(at_state, league_avg)
+                ts_h = _stats_dict_to_team_stats(info_h)
+                ts_a = _stats_dict_to_team_stats(info_a)
 
-            pred = self.engine.predict_match(ht, at)
-            total_tested += 1
+                self.engine.league_avg = league_avg
+                pred = self.engine.predict_match(ts_h, ts_a)
+                self.engine.league_avg = saved_league_avg
 
-            # Actual outcome
-            if r.home_goals > r.away_goals:
-                actual = "H"
-                actual_vec = (1, 0, 0)
-            elif r.home_goals == r.away_goals:
-                actual = "D"
-                actual_vec = (0, 1, 0)
-            else:
-                actual = "A"
-                actual_vec = (0, 0, 1)
+                total_tested += 1
 
-            probs = (pred.home_win_prob / 100, pred.draw_prob / 100, pred.away_win_prob / 100)
+                if r.home_goals > r.away_goals:
+                    actual = "H"
+                    actual_vec = (1, 0, 0)
+                elif r.home_goals == r.away_goals:
+                    actual = "D"
+                    actual_vec = (0, 1, 0)
+                else:
+                    actual = "A"
+                    actual_vec = (0, 0, 1)
 
-            # 1X2 accuracy
-            predicted = max(zip(["H", "D", "A"], probs), key=lambda x: x[1])[0]
-            if predicted == actual:
-                correct_1x2 += 1
+                probs = (pred.home_win_prob / 100, pred.draw_prob / 100, pred.away_win_prob / 100)
 
-            # Brier score
-            brier = sum((p - a) ** 2 for p, a in zip(probs, actual_vec))
-            brier_sum += brier
+                predicted = max(zip(["H", "D", "A"], probs), key=lambda x: x[1])[0]
+                if predicted == actual:
+                    correct_1x2 += 1
 
-            # Log loss
-            eps = 1e-10
-            ll = -sum(a * math.log(max(p, eps)) for p, a in zip(probs, actual_vec))
-            log_loss_sum += ll
+                brier = sum((p - a) ** 2 for p, a in zip(probs, actual_vec))
+                brier_sum += brier
 
-            # Calibration: bucket the highest predicted probability
-            top_prob = max(probs) * 100
-            bucket = int(top_prob // 10) * 10
-            bucket = min(bucket, 100)
-            calibration_buckets[bucket].append(1 if predicted == actual else 0)
+                eps = 1e-10
+                ll = -sum(a * math.log(max(p, eps)) for p, a in zip(probs, actual_vec))
+                log_loss_sum += ll
+
+                top_prob = max(probs) * 100
+                bucket = int(top_prob // 10) * 10
+                bucket = min(bucket, 100)
+                calibration_buckets[bucket].append(1 if predicted == actual else 0)
+
+            ht_state.add_home_result(r.home_goals, r.away_goals)
+            at_state.add_away_result(r.home_goals, r.away_goals)
+            total_goals += r.home_goals + r.away_goals
+            completed += 1
 
         if total_tested == 0:
             print(f"{Colors.RED}  Not enough data for backtesting.{Colors.END}")
@@ -882,6 +983,7 @@ class Backtester:
         print(f"{Colors.CYAN}{'═' * 70}{Colors.END}")
 
         print(f"\n  Matches tested:  {metrics['total_matches']}")
+        print(f"  {Colors.BLUE}(Walk-forward: stats from matches before each game only){Colors.END}")
         print(f"  1X2 Accuracy:    {Colors.GREEN}{metrics['accuracy_pct']:.1f}%{Colors.END} ({metrics['correct_1x2']}/{metrics['total_matches']})")
         print(f"  Brier Score:     {metrics['brier_score']:.4f}  (lower is better, baseline ~0.667)")
         print(f"  Log Loss:        {metrics['log_loss']:.4f}  (lower is better)")
