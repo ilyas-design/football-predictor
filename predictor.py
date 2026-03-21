@@ -42,7 +42,7 @@ from api_integration import (
 # CONFIGURATION
 # ═══════════════════════════════════════════════════════════════════════════════
 
-VERSION = "2.0.0"
+VERSION = "2.1.0"
 SCRIPT_NAME = "FOOTBALL PREDICTOR PRO"
 
 class Colors:
@@ -73,6 +73,12 @@ class TeamStats:
     clean_sheet_pct: float
     btts_pct: float
     team_id: int = 0
+    games_played: int = 20
+    # Home/away splits (vs league half-average); 0 = use attack_strength/defense_strength
+    home_attack: float = 0.0
+    away_attack: float = 0.0
+    home_defense: float = 0.0
+    away_defense: float = 0.0
 
 @dataclass
 class MatchPrediction:
@@ -190,6 +196,11 @@ class LiveDataProvider:
                 clean_sheet_pct=info["clean_sheet_pct"],
                 btts_pct=info["btts_pct"],
                 team_id=info["id"],
+                games_played=info.get("games_played", td.games_played),
+                home_attack=info.get("home_attack", 0.0),
+                away_attack=info.get("away_attack", 0.0),
+                home_defense=info.get("home_defense", 0.0),
+                away_defense=info.get("away_defense", 0.0),
             )
             self.team_stats[td.name] = ts
             self.team_id_map[td.name] = td.id
@@ -304,6 +315,15 @@ class PredictionEngine:
         self.league_avg = league_avg_goals
         self.rho = rho  # Dixon-Coles low-score correction parameter
 
+    @staticmethod
+    def _split_ratings(t: TeamStats) -> Tuple[float, float, float, float]:
+        """Home/away attack & defense; fall back to overall strengths when unset (demo DB)."""
+        ha = t.home_attack if t.home_attack > 1e-9 else t.attack_strength
+        aa = t.away_attack if t.away_attack > 1e-9 else t.attack_strength
+        hd = t.home_defense if t.home_defense > 1e-9 else t.defense_strength
+        ad = t.away_defense if t.away_defense > 1e-9 else t.defense_strength
+        return ha, aa, hd, ad
+
     # ── Poisson base ────────────────────────────────────────────────────────
 
     @staticmethod
@@ -360,12 +380,16 @@ class PredictionEngine:
     # ── Expected goals ──────────────────────────────────────────────────────
 
     def _raw_expected_goals(self, home: TeamStats, away: TeamStats) -> Tuple[float, float]:
+        """Expected goals using home/away splits: home attack vs away defense, etc."""
         half = self.league_avg / 2
         form_mult_h = 0.8 + 0.4 * home.form_rating
         form_mult_a = 0.8 + 0.4 * away.form_rating
 
-        home_xg = home.attack_strength * away.defense_strength * home.home_advantage * half * form_mult_h
-        away_xg = away.attack_strength * home.defense_strength * (1 / home.home_advantage) * half * form_mult_a
+        h_ha, h_aa, h_hd, h_ad = self._split_ratings(home)
+        a_ha, a_aa, a_hd, a_ad = self._split_ratings(away)
+
+        home_xg = h_ha * a_ad * home.home_advantage * half * form_mult_h
+        away_xg = a_aa * h_hd * (1.0 / home.home_advantage) * half * form_mult_a
         return home_xg, away_xg
 
     def calculate_expected_goals(self, home: TeamStats, away: TeamStats,
@@ -379,7 +403,7 @@ class PredictionEngine:
         return round(home_xg, 3), round(away_xg, 3)
 
     def _adjust_xg_with_h2h(self, home_xg: float, away_xg: float,
-                              h2h: dict, home_name: str, weight: float = 0.10) -> Tuple[float, float]:
+                              h2h: dict, home_name: str) -> Tuple[float, float]:
         matches = h2h.get("matches", [])
         if not matches:
             return home_xg, away_xg
@@ -399,6 +423,9 @@ class PredictionEngine:
         h2h_home_avg = h_goals / n
         h2h_away_avg = a_goals / n
 
+        # Slightly more H2H weight when more games; cap so we do not overfit tiny samples
+        weight = min(0.22, 0.085 + 0.018 * max(0, n - 3)) if n >= 3 else 0.10
+
         adj_home = (1 - weight) * home_xg + weight * h2h_home_avg
         adj_away = (1 - weight) * away_xg + weight * h2h_away_avg
         return adj_home, adj_away
@@ -406,7 +433,7 @@ class PredictionEngine:
     # ── Score probability matrix (Dixon-Coles) ─────────────────────────────
 
     def calculate_score_probabilities(self, home_xg: float, away_xg: float,
-                                       max_goals: int = 6) -> Dict[str, float]:
+                                       max_goals: int = 8) -> Dict[str, float]:
         scores = {}
         total = 0.0
         for hg in range(max_goals + 1):
@@ -459,9 +486,9 @@ class PredictionEngine:
                 yes += prob
             else:
                 no += prob
-        # Blend with team historical BTTS
+        # Blend with team historical BTTS (slightly more weight on the model grid)
         btts_factor = (home.btts_pct + away.btts_pct) / 2
-        yes = yes * 0.7 + btts_factor * 0.3
+        yes = yes * 0.72 + btts_factor * 0.28
         no = 1.0 - yes
         return yes, no
 
@@ -474,12 +501,25 @@ class PredictionEngine:
     @staticmethod
     def calibrate_with_odds(model_probs: Tuple[float, float, float],
                              odds_probs: Tuple[float, float, float],
-                             model_weight: float = 0.65) -> Tuple[float, float, float]:
-        """Blend model probabilities with odds-implied probabilities."""
+                             base_model_weight: float = 0.58) -> Tuple[float, float, float]:
+        """Blend model with de-vigged odds; lean more on odds when the model is very uncertain."""
         if sum(odds_probs) < 0.01:
             return model_probs
-        blended = tuple(model_weight * m + (1 - model_weight) * o
-                        for m, o in zip(model_probs, odds_probs))
+        m = model_probs
+        p = [x for x in m if x > 1e-12]
+        if p:
+            ent = -sum(x * math.log(x) for x in p)
+            # Uniform 1X2 ~ ln(3) ≈ 1.099; blend more to market when spread is flat
+            if ent > 1.04:
+                model_weight = 0.44
+            elif ent < 0.72:
+                model_weight = min(0.68, base_model_weight + 0.08)
+            else:
+                model_weight = base_model_weight
+        else:
+            model_weight = base_model_weight
+        blended = tuple(model_weight * a + (1 - model_weight) * b
+                        for a, b in zip(model_probs, odds_probs))
         t = sum(blended) or 1
         return tuple(b / t for b in blended)
 

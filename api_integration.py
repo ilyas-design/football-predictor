@@ -909,11 +909,22 @@ class DataProcessor:
         return (raw_h / total, raw_d / total, raw_a / total)
 
     @staticmethod
+    def _shrink_to_league(raw: float, baseline: float, sample_games: int,
+                          min_games: int = 10) -> float:
+        """Pull noisy early-season rates toward league average (1.0 for strengths)."""
+        if sample_games <= 0:
+            return baseline
+        w = min(1.0, sample_games / max(min_games, 1))
+        return w * raw + (1.0 - w) * baseline
+
+    @staticmethod
     def build_team_stats(team_data: TeamData, league_avg_goals: float, form_decay: float = 0.85) -> dict:
-        """Build prediction-engine stats dict from API TeamData."""
+        """Build prediction-engine stats from API TeamData (overall + home/away splits)."""
         gp = team_data.games_played or 1
-        hg = team_data.home_wins + team_data.home_draws + team_data.home_losses or 1
-        ag = team_data.away_wins + team_data.away_draws + team_data.away_losses or 1
+        hg = team_data.home_wins + team_data.home_draws + team_data.home_losses
+        ag = team_data.away_wins + team_data.away_draws + team_data.away_losses
+        hg = hg if hg > 0 else 1
+        ag = ag if ag > 0 else 1
 
         half_avg = league_avg_goals / 2 if league_avg_goals > 0 else 1.325
 
@@ -921,6 +932,17 @@ class DataProcessor:
         avg_conceded = team_data.goals_against / gp
         attack_strength = avg_scored / half_avg
         defense_strength = avg_conceded / half_avg
+
+        # Home / away goal rates vs league half-average (for Dixon–Coles matchups)
+        raw_ha = (team_data.home_goals_for / hg) / half_avg
+        raw_hd = (team_data.home_goals_against / hg) / half_avg
+        raw_aa = (team_data.away_goals_for / ag) / half_avg
+        raw_ad = (team_data.away_goals_against / ag) / half_avg
+
+        home_attack = DataProcessor._shrink_to_league(raw_ha, 1.0, hg, min_games=10)
+        home_defense = DataProcessor._shrink_to_league(raw_hd, 1.0, hg, min_games=10)
+        away_attack = DataProcessor._shrink_to_league(raw_aa, 1.0, ag, min_games=10)
+        away_defense = DataProcessor._shrink_to_league(raw_ad, 1.0, ag, min_games=10)
 
         home_ppg = (team_data.home_wins * 3 + team_data.home_draws) / hg
         away_ppg = (team_data.away_wins * 3 + team_data.away_draws) / ag
@@ -931,13 +953,13 @@ class DataProcessor:
         clean_sheet_pct = team_data.clean_sheets / gp if gp > 0 else 0.25
 
         # BTTS estimation: proportion of games where both teams scored
-        # Approximate from goals data
         btts_pct = 1.0 - clean_sheet_pct - (team_data.failed_to_score / gp if gp > 0 else 0.15)
         btts_pct = min(max(btts_pct, 0.3), 0.85)
 
         return {
             "name": team_data.name,
             "id": team_data.id,
+            "games_played": gp,
             "attack_strength": round(attack_strength, 3),
             "defense_strength": round(defense_strength, 3),
             "home_advantage": round(home_advantage, 3),
@@ -946,6 +968,10 @@ class DataProcessor:
             "avg_goals_conceded": round(avg_conceded, 3),
             "clean_sheet_pct": round(clean_sheet_pct, 3),
             "btts_pct": round(btts_pct, 3),
+            "home_attack": round(home_attack, 3),
+            "away_attack": round(away_attack, 3),
+            "home_defense": round(home_defense, 3),
+            "away_defense": round(away_defense, 3),
         }
 
 # ═══════════════════════════════════════════════════════════════════════════════
